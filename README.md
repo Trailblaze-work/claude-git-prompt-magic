@@ -14,7 +14,7 @@ This creates `.claude/hooks/` with two shell scripts and adds hook configuration
 
 ### Making it automatic for your team
 
-If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture automatically — zero setup on their end. This is the recommended approach.
+If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture baked in — zero setup on their end. This is the recommended approach.
 
 `.claude/settings.json` is Claude Code's [shared project config](https://docs.anthropic.com/en/docs/claude-code/settings). Committing it also shares any other project-level Claude Code settings (like enabled plugins or allowed tools) with the team — which is generally the point of that file. Personal overrides go in `.claude/settings.local.json`, which the installer adds to `.gitignore`.
 
@@ -26,7 +26,7 @@ A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/
 
 1. Extracts the commit hash from the tool output
 2. Reads the session transcript (JSONL)
-3. Walks backward to collect every user prompt since the previous commit
+3. Follows the breadcrumbs backward to collect every user prompt since the previous commit
 4. Attaches them as a git note in `refs/notes/claude-prompts`
 5. Pushes the note to origin
 
