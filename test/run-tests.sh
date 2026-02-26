@@ -69,9 +69,48 @@ install_hooks() {
 #   "user:Some prompt text"          → user message
 #   "commit:git commit -m msg"       → assistant tool_use with git commit
 #   "bash:some command"              → assistant tool_use with non-commit command
+#   "tool:ToolName"                  → assistant tool_use for a named tool (e.g. Edit, Grep)
+#
+# Optional env vars (set before calling, affect ALL user/assistant records):
+#   TRANSCRIPT_MODEL       → model name (default: claude-opus-4-6)
+#   TRANSCRIPT_SLUG        → session slug (default: "")
+#   TRANSCRIPT_VERSION     → client version (default: "")
+#   TRANSCRIPT_BRANCH      → git branch (default: "")
+#   TRANSCRIPT_PERMISSION  → permission mode (default: "")
+#   TRANSCRIPT_TOKENS_IN   → input tokens per assistant turn (default: 0)
+#   TRANSCRIPT_TOKENS_OUT  → output tokens per assistant turn (default: 0)
+#   TRANSCRIPT_CACHE_READ  → cache read tokens per assistant turn (default: 0)
+#   TRANSCRIPT_CACHE_WRITE → cache write tokens per assistant turn (default: 0)
 make_transcript() {
     local path="$1"
     shift
+
+    local model="${TRANSCRIPT_MODEL:-}"
+    local slug="${TRANSCRIPT_SLUG:-}"
+    local version="${TRANSCRIPT_VERSION:-}"
+    local branch="${TRANSCRIPT_BRANCH:-}"
+    local perm="${TRANSCRIPT_PERMISSION:-}"
+    local tok_in="${TRANSCRIPT_TOKENS_IN:-0}"
+    local tok_out="${TRANSCRIPT_TOKENS_OUT:-0}"
+    local cache_r="${TRANSCRIPT_CACHE_READ:-0}"
+    local cache_w="${TRANSCRIPT_CACHE_WRITE:-0}"
+
+    # Build user record extra fields
+    local user_extra=""
+    [[ -n "$slug" ]] && user_extra="$user_extra,\"slug\":\"$slug\""
+    [[ -n "$version" ]] && user_extra="$user_extra,\"version\":\"$version\""
+    [[ -n "$branch" ]] && user_extra="$user_extra,\"gitBranch\":\"$branch\""
+    [[ -n "$perm" ]] && user_extra="$user_extra,\"permissionMode\":\"$perm\""
+
+    # Build assistant usage block
+    local usage=""
+    if [[ "$tok_in" -gt 0 || "$tok_out" -gt 0 || "$cache_r" -gt 0 || "$cache_w" -gt 0 ]]; then
+        usage=",\"usage\":{\"input_tokens\":$tok_in,\"output_tokens\":$tok_out,\"cache_read_input_tokens\":$cache_r,\"cache_creation_input_tokens\":$cache_w}"
+    fi
+
+    # Build model field
+    local model_field=""
+    [[ -n "$model" ]] && model_field=",\"model\":\"$model\""
 
     > "$path"
     for entry in "$@"; do
@@ -79,17 +118,21 @@ make_transcript() {
         local content="${entry#*:}"
         case "$type" in
             user)
-                # Escape quotes and backslashes for JSON
                 content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g')
-                printf '{"type":"user","message":{"content":"%s"}}\n' "$content" >> "$path"
+                printf '{"type":"user","message":{"content":"%s"}%s}\n' "$content" "$user_extra" >> "$path"
                 ;;
             commit)
                 content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g')
-                printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]}}\n' "$content" >> "$path"
+                printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]%s%s}}\n' "$content" "$model_field" "$usage" >> "$path"
                 ;;
             bash)
                 content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g')
-                printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]}}\n' "$content" >> "$path"
+                printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]%s%s}}\n' "$content" "$model_field" "$usage" >> "$path"
+                ;;
+            tool)
+                # content is the tool name (e.g. "Edit", "Grep", "mcp__notion__search")
+                content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g')
+                printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]%s%s}}\n' "$content" "$model_field" "$usage" >> "$path"
                 ;;
         esac
     done
@@ -240,8 +283,15 @@ test_capture_note_format() {
     hash=$(git rev-parse --short HEAD)
 
     local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_MODEL="claude-opus-4-6" \
+    TRANSCRIPT_SLUG="starry-hugging-otter" \
+    TRANSCRIPT_VERSION="2.1.59" \
+    TRANSCRIPT_BRANCH="main" \
+    TRANSCRIPT_TOKENS_IN=1000 \
+    TRANSCRIPT_TOKENS_OUT=500 \
     make_transcript "$transcript" \
         "user:Do the thing" \
+        "bash:echo hello" \
         "commit:git commit -m format test"
 
     make_hook_input "$hash" "$transcript" "session-abc-123" | bash "$HOOKS_DIR/capture-prompts.sh"
@@ -251,15 +301,16 @@ test_capture_note_format() {
 
     local ok=true
     [[ "$note" == *"## Claude Code Prompts"* ]] || ok=false
+    [[ "$note" == *"<!-- format:v2 -->"* ]] || ok=false
     [[ "$note" == *"**Session**: session-abc-123"* ]] || ok=false
     [[ "$note" == *"**Captured**:"* ]] || ok=false
     [[ "$note" == *"### Prompts"* ]] || ok=false
     [[ "$note" == *"**1.** Do the thing"* ]] || ok=false
 
     if $ok; then
-        pass "note has correct markdown format"
+        pass "note has correct v2 markdown format"
     else
-        fail "note has correct markdown format" "note: $note"
+        fail "note has correct v2 markdown format" "note: $note"
     fi
 }
 
@@ -921,6 +972,278 @@ EOF
 
 
 # ============================================================
+# v2 format enrichment
+# ============================================================
+
+test_note_has_v2_format_marker() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"<!-- format:v2 -->"* ]]; then
+        pass "note has v2 format marker"
+    else
+        fail "note has v2 format marker" "note: $note"
+    fi
+}
+
+test_note_includes_model() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_MODEL="claude-opus-4-6" \
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "bash:echo hi" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"**Model**: claude-opus-4-6"* ]]; then
+        pass "note includes model"
+    else
+        fail "note includes model" "note: $note"
+    fi
+}
+
+test_note_includes_client_version() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_VERSION="2.1.59" \
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"**Client**: 2.1.59"* ]]; then
+        pass "note includes client version"
+    else
+        fail "note includes client version" "note: $note"
+    fi
+}
+
+test_note_includes_branch() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_BRANCH="feature/avatar-upload" \
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"**Branch**: feature/avatar-upload"* ]]; then
+        pass "note includes branch"
+    else
+        fail "note includes branch" "note: $note"
+    fi
+}
+
+test_note_includes_stats() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_MODEL="claude-opus-4-6" \
+    TRANSCRIPT_TOKENS_IN=45230 \
+    TRANSCRIPT_TOKENS_OUT=12847 \
+    TRANSCRIPT_CACHE_READ=128450 \
+    TRANSCRIPT_CACHE_WRITE=8200 \
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "bash:echo working" \
+        "user:Continue" \
+        "bash:echo done" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    local ok=true
+    [[ "$note" == *"### Stats"* ]] || ok=false
+    [[ "$note" == *"Turns"* ]] || ok=false
+    [[ "$note" == *"Tokens in"* ]] || ok=false
+    [[ "$note" == *"Tokens out"* ]] || ok=false
+    [[ "$note" == *"Cache read"* ]] || ok=false
+    [[ "$note" == *"Cache write"* ]] || ok=false
+
+    if $ok; then
+        pass "note includes stats table"
+    else
+        fail "note includes stats table" "note: $note"
+    fi
+}
+
+test_note_includes_tools() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "tool:Edit" \
+        "tool:Edit" \
+        "tool:Read" \
+        "tool:Grep" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    local ok=true
+    [[ "$note" == *"### Tools"* ]] || ok=false
+    [[ "$note" == *"Edit(2)"* ]] || ok=false
+    [[ "$note" == *"Read(1)"* ]] || ok=false
+    [[ "$note" == *"Grep(1)"* ]] || ok=false
+
+    if $ok; then
+        pass "note includes tools with counts"
+    else
+        fail "note includes tools with counts" "note: $note"
+    fi
+}
+
+test_multi_model_session() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    # Build transcript manually to use different models per assistant turn
+    local transcript="$TEST_DIR/transcript.jsonl"
+    > "$transcript"
+    printf '{"type":"user","message":{"content":"Do something"}}\n' >> "$transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{}}],"model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":50}}}\n' >> "$transcript"
+    printf '{"type":"user","message":{"content":"Continue"}}\n' >> "$transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}],"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}\n' >> "$transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$transcript"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"claude-sonnet-4-6"* && "$note" == *"claude-opus-4-6"* ]]; then
+        pass "multi-model session lists both models"
+    else
+        fail "multi-model session lists both models" "note: $note"
+    fi
+}
+
+test_mcp_server_detection() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Search my notes" \
+        "tool:mcp__notion__search" \
+        "tool:mcp__notion__get_page" \
+        "tool:mcp__slack__post_message" \
+        "tool:Read" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    local ok=true
+    [[ "$note" == *"### MCP Servers"* ]] || ok=false
+    [[ "$note" == *"notion"* ]] || ok=false
+    [[ "$note" == *"slack"* ]] || ok=false
+
+    if $ok; then
+        pass "detects MCP servers from tool names"
+    else
+        fail "detects MCP servers from tool names" "note: $note"
+    fi
+}
+
+test_v2_backward_compat() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" "session-compat" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # v1 consumers expect these structural elements
+    [[ "$note" == "## Claude Code Prompts"* ]] || ok=false
+    [[ "$note" == *"**Session**:"* ]] || ok=false
+    [[ "$note" == *"**Captured**:"* ]] || ok=false
+    [[ "$note" == *"### Prompts"* ]] || ok=false
+    [[ "$note" == *"**1.** Do something"* ]] || ok=false
+
+    if $ok; then
+        pass "v2 format is backward compatible with v1 structure"
+    else
+        fail "v2 format is backward compatible with v1 structure" "note: $note"
+    fi
+}
+
+
+# ============================================================
 # Edge cases
 # ============================================================
 
@@ -1291,6 +1614,17 @@ main() {
     test_capture_in_worktree
     test_worktree_note_visible_from_main
     test_notes_shared_between_worktrees
+
+    section "v2 format enrichment"
+    test_note_has_v2_format_marker
+    test_note_includes_model
+    test_note_includes_client_version
+    test_note_includes_branch
+    test_note_includes_stats
+    test_note_includes_tools
+    test_multi_model_session
+    test_mcp_server_detection
+    test_v2_backward_compat
 
     section "edge cases"
     test_capture_no_transcript

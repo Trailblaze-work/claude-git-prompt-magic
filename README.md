@@ -54,8 +54,15 @@ Date:   Wed Feb 26 15:23:03 2026 +0100
 Notes (claude-prompts):
     ## Claude Code Prompts
 
+    <!-- format:v2 -->
+
     **Session**: f0d06f5e-5e70-4085-960f-bccb9dd11afb
+    **Slug**: starry-hugging-otter
     **Captured**: 2026-02-26T14:23:05Z
+    **Branch**: feature/avatar-upload
+    **Model**: claude-opus-4-6
+    **Client**: 2.1.59
+    **Permission**: accept-edits
 
     ### Prompts
 
@@ -63,7 +70,25 @@ Notes (claude-prompts):
 
     **2.** Also add a circular crop preview before saving
 
-    **3.** Looks good, commit and push
+    **3.** [auto-accept] Looks good, commit and push
+
+    ### Stats
+
+    | Metric | Value |
+    |--------|-------|
+    | Turns | 3 user, 8 assistant |
+    | Tokens in | 45,230 |
+    | Tokens out | 12,847 |
+    | Cache read | 128,450 |
+    | Cache write | 8,200 |
+
+    ### Tools
+
+    Edit(4) Bash(6) Read(3) Grep(2) Glob(1)
+
+    ### MCP Servers
+
+    notion, slack
 ```
 
 View prompts for any specific commit:
@@ -73,8 +98,14 @@ $ git notes --ref=claude-prompts show HEAD
 
 ## Claude Code Prompts
 
+<!-- format:v2 -->
+
 **Session**: f0d06f5e-5e70-4085-960f-bccb9dd11afb
+**Slug**: starry-hugging-otter
 **Captured**: 2026-02-26T14:23:05Z
+**Branch**: feature/avatar-upload
+**Model**: claude-opus-4-6
+**Client**: 2.1.59
 
 ### Prompts
 
@@ -98,6 +129,27 @@ a1b2c3d Add user avatar upload with size validation
 e4f5a6b Fix typo in README
 c7d8e9f Update CI config to Node 22
 ```
+
+### Note format
+
+Notes use a structured markdown format designed to be readable in terminals, rendered on GitHub, and parseable by scripts.
+
+| Field | Description |
+|-------|-------------|
+| `**Session**` | Claude Code session UUID |
+| `**Slug**` | Human-readable session slug (if available) |
+| `**Captured**` | UTC timestamp when the note was created |
+| `**Branch**` | Git branch at time of commit |
+| `**Model**` | Model(s) used, comma-separated if multiple |
+| `**Client**` | Claude Code CLI version |
+| `**Permission**` | Permission mode (`auto-accept`, `accept-edits`, `plan`, `bypass`) |
+
+**Sections** (all optional, only present when data exists):
+
+- **### Prompts** — numbered user prompts with `[mode]` prefix when non-default
+- **### Stats** — markdown table with turn counts and token usage
+- **### Tools** — compact `ToolName(count)` list sorted by frequency
+- **### MCP Servers** — comma-separated list of MCP server names detected from tool usage
 
 ## Uninstall
 

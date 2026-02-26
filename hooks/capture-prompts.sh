@@ -77,27 +77,14 @@ def main():
     if not session_id:
         return
 
-    # Extract user prompts since the previous git commit in this session
-    prompts = extract_prompts(transcript_path)
-    if not prompts:
+    # Extract session data since the previous git commit
+    data = extract_session_data(transcript_path)
+    if not data["prompts"]:
         return
 
     # Format note
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lines = [
-        "## Claude Code Prompts",
-        "",
-        f"**Session**: {session_id}",
-        f"**Captured**: {timestamp}",
-        "",
-        "### Prompts",
-        "",
-    ]
-    for i, prompt in enumerate(prompts, 1):
-        lines.append(f"**{i}.** {redact_secrets(prompt)}")
-        lines.append("")
-
-    note = "\n".join(lines)
+    note = format_note(session_id, timestamp, data)
 
     # Attach as git note (--force overwrites if amending)
     result = subprocess.run(
@@ -116,9 +103,10 @@ def main():
     )
 
 
-def extract_prompts(transcript_path):
-    """Walk backward through the transcript collecting user prompts.
+def extract_session_data(transcript_path):
+    """Walk backward through the transcript collecting prompts and metadata.
 
+    Returns a dict with prompts, models, token usage, tool counts, etc.
     Stops at the previous git commit boundary (or session start).
     Skips the current commit's tool_use record so we capture the
     prompts that led *to* this commit, not past it.
@@ -137,12 +125,49 @@ def extract_prompts(transcript_path):
     prompts = []
     found_current_commit = False
 
+    # Metadata accumulators
+    models_seen = []       # ordered by first appearance
+    models_set = set()
+    tools_count = {}       # tool_name -> count
+    mcp_servers_set = set()
+    user_turns = 0
+    assistant_turns = 0
+    tokens_in = 0
+    tokens_out = 0
+    cache_read = 0
+    cache_write = 0
+    slug = ""
+    client_version = ""
+    git_branch = ""
+    permission_mode = ""
+
+    def _finalize():
+        prompts.reverse()
+        return {
+            "prompts": prompts,
+            "models": models_seen,
+            "slug": slug,
+            "client_version": client_version,
+            "git_branch": git_branch,
+            "permission_mode": permission_mode,
+            "user_turns": user_turns,
+            "assistant_turns": assistant_turns,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cache_read": cache_read,
+            "cache_write": cache_write,
+            "tools": tools_count,
+            "mcp_servers": sorted(mcp_servers_set),
+        }
+
     for record in reversed(records):
         rec_type = record.get("type", "")
 
         # Detect git-commit tool_use inside assistant messages
         if rec_type == "assistant":
-            content = record.get("message", {}).get("content", [])
+            msg = record.get("message", {})
+            content = msg.get("content", [])
+            is_commit = False
             if isinstance(content, list):
                 for part in content:
                     if (
@@ -152,18 +177,56 @@ def extract_prompts(transcript_path):
                         and "git commit" in part.get("input", {}).get("command", "")
                     ):
                         if not found_current_commit:
-                            # This is the commit that just happened -- skip it
                             found_current_commit = True
+                            is_commit = True
                             break
                         else:
                             if prompts:
-                                # We have prompts, stop here
-                                prompts.reverse()
-                                return prompts
-                            # No prompts between commits (multi-commit turn), keep looking
+                                return _finalize()
+                            # No prompts between commits, keep looking
+
+            # Gather assistant metadata (only within our window)
+            if found_current_commit and not is_commit:
+                assistant_turns += 1
+                # Model
+                model = msg.get("model", "")
+                if model and model not in models_set:
+                    models_seen.append(model)
+                    models_set.add(model)
+                # Token usage
+                usage = msg.get("usage", {})
+                tokens_in += usage.get("input_tokens", 0)
+                tokens_out += usage.get("output_tokens", 0)
+                cache_read += usage.get("cache_read_input_tokens", 0)
+                cache_write += usage.get("cache_creation_input_tokens", 0)
+                # Tool use counts
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "tool_use":
+                            tool_name = part.get("name", "")
+                            if tool_name:
+                                tools_count[tool_name] = tools_count.get(tool_name, 0) + 1
+                                # Detect MCP servers from mcp__server__method pattern
+                                if tool_name.startswith("mcp__"):
+                                    parts = tool_name.split("__")
+                                    if len(parts) >= 3:
+                                        mcp_servers_set.add(parts[1])
 
         # Collect user prompts (only after we've passed the current commit)
         if found_current_commit and rec_type == "user":
+            user_turns += 1
+            # Capture metadata from user records
+            if not slug:
+                slug = record.get("slug", "")
+            if not client_version:
+                client_version = record.get("version", "")
+            if not git_branch:
+                git_branch = record.get("gitBranch", "")
+            # Always update permission_mode to capture the last one
+            raw_mode = record.get("permissionMode", "")
+            if raw_mode:
+                permission_mode = raw_mode
+
             text = extract_text(record)
             if text:
                 if len(text) > 2000:
@@ -173,8 +236,7 @@ def extract_prompts(transcript_path):
                     text = f"[{mode}] {text}"
                 prompts.append(text)
 
-    prompts.reverse()
-    return prompts
+    return _finalize()
 
 
 MODE_LABELS = {
@@ -183,6 +245,80 @@ MODE_LABELS = {
     "bypassPermissions": "bypass",
     "acceptEdits": "accept-edits",
 }
+
+
+def format_note(session_id, timestamp, data):
+    """Format the v2 git note from session data."""
+    lines = [
+        "## Claude Code Prompts",
+        "",
+        "<!-- format:v2 -->",
+        "",
+        f"**Session**: {session_id}",
+    ]
+    if data.get("slug"):
+        lines.append(f"**Slug**: {data['slug']}")
+    lines.append(f"**Captured**: {timestamp}")
+    if data.get("git_branch"):
+        lines.append(f"**Branch**: {data['git_branch']}")
+    if data.get("models"):
+        lines.append(f"**Model**: {', '.join(data['models'])}")
+    if data.get("client_version"):
+        lines.append(f"**Client**: {data['client_version']}")
+    if data.get("permission_mode"):
+        label = MODE_LABELS.get(data["permission_mode"], data["permission_mode"])
+        lines.append(f"**Permission**: {label}")
+
+    # Prompts section
+    lines.append("")
+    lines.append("### Prompts")
+    lines.append("")
+    for i, prompt in enumerate(data["prompts"], 1):
+        lines.append(f"**{i}.** {redact_secrets(prompt)}")
+        lines.append("")
+
+    # Stats section (only if we have token data)
+    has_tokens = (
+        data.get("tokens_in", 0) > 0
+        or data.get("tokens_out", 0) > 0
+    )
+    if has_tokens or data.get("user_turns", 0) > 0:
+        lines.append("### Stats")
+        lines.append("")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
+        if data.get("user_turns", 0) > 0 or data.get("assistant_turns", 0) > 0:
+            lines.append(
+                f"| Turns | {data['user_turns']} user, {data['assistant_turns']} assistant |"
+            )
+        if data.get("tokens_in", 0) > 0:
+            lines.append(f"| Tokens in | {data['tokens_in']:,} |")
+        if data.get("tokens_out", 0) > 0:
+            lines.append(f"| Tokens out | {data['tokens_out']:,} |")
+        if data.get("cache_read", 0) > 0:
+            lines.append(f"| Cache read | {data['cache_read']:,} |")
+        if data.get("cache_write", 0) > 0:
+            lines.append(f"| Cache write | {data['cache_write']:,} |")
+        lines.append("")
+
+    # Tools section (only if any tools were used)
+    if data.get("tools"):
+        # Sort by frequency descending
+        sorted_tools = sorted(data["tools"].items(), key=lambda x: -x[1])
+        tool_parts = [f"{name}({count})" for name, count in sorted_tools]
+        lines.append("### Tools")
+        lines.append("")
+        lines.append(" ".join(tool_parts))
+        lines.append("")
+
+    # MCP Servers section (only if any detected)
+    if data.get("mcp_servers"):
+        lines.append("### MCP Servers")
+        lines.append("")
+        lines.append(", ".join(data["mcp_servers"]))
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def extract_mode(record):
