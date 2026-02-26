@@ -122,6 +122,20 @@ class CodexPromptExtractorTests(unittest.TestCase):
 
             self.assertEqual(found, good)
 
+    def test_extract_prompts_when_current_commit_event_not_yet_flushed(self):
+        records = [
+            user_message("old request"),
+            commit_call("c1"),
+            commit_output("c1", "abc1234"),
+            user_message("new request 1"),
+            assistant_message("in progress"),
+            user_message("new request 2"),
+            # no c2 function_call_output yet (post-commit race)
+        ]
+
+        prompts = self.m.extract_prompts_for_commit(records, "def5678")
+        self.assertEqual(prompts, ["new request 1", "new request 2"])
+
 
 if __name__ == "__main__":
     unittest.main()
