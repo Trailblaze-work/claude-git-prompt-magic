@@ -1,8 +1,10 @@
 # claude-git-prompt-magic
 
-Automatically captures Claude Code prompts and attaches them to git commits using [git notes](https://git-scm.com/docs/git-notes). Zero dependencies beyond Python 3 and bash.
+Automatically captures coding-assistant prompts and attaches them to git commits using [git notes](https://git-scm.com/docs/git-notes). Zero dependencies beyond Python 3 and bash.
 
 ## Install
+
+### Claude Code
 
 Run this inside any git repo:
 
@@ -20,6 +22,21 @@ If you **commit the `.claude/` directory**, every developer who clones the repo 
 
 If you'd rather **not commit `.claude/`**, each developer runs the install one-liner above individually. Same result, just not automatic.
 
+### Codex
+
+Run this inside any git repo:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Trailblaze-work/claude-git-prompt-magic/main/install-codex.sh)
+```
+
+This installs `post-commit` helpers into `.git/hooks/`:
+
+- `capture-codex-prompts.sh`
+- `codex_prompt_extractor.py`
+
+The installer appends a marked block to `.git/hooks/post-commit` (idempotent) and configures git notes display/fetch.
+
 ## How it works
 
 A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks) fires after every Bash command. For non-commits it exits in ~1ms. When it detects a successful `git commit`, it rises to the occasion:
@@ -33,6 +50,16 @@ A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/
 A SessionStart hook auto-configures `git fetch` to pull notes and `git log` to display them.
 
 Manual commits are completely unaffected — the hooks only fire inside Claude Code.
+
+For Codex, a `post-commit` hook runs after each commit:
+
+1. Reads `CODEX_THREAD_ID` from the environment (exits fast if missing)
+2. Finds the latest session file matching that thread in `~/.codex/sessions`
+3. Pairs `exec_command` `git commit` calls with their outputs to detect commit hashes
+4. Collects user prompts from the start of the session up to the current commit boundary
+5. Filters bootstrap messages (`AGENTS.md` injection + `<environment_context>`)
+6. Attaches prompts as a git note in `refs/notes/claude-prompts`
+7. Pushes that note ref to origin (best effort)
 
 ## What it looks like
 
@@ -106,10 +133,33 @@ git config --local --unset notes.displayRef
 git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:refs/notes/claude-prompts"
 ```
 
+For Codex installs:
+
+```bash
+rm .git/hooks/capture-codex-prompts.sh .git/hooks/codex_prompt_extractor.py
+# Remove the marker block from .git/hooks/post-commit:
+#   # >>> codex-git-prompt-magic >>>
+#   ...
+#   # <<< codex-git-prompt-magic <<<
+git config --local --unset notes.displayRef
+git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:refs/notes/claude-prompts"
+```
+
 ## Limitations
 
 - Only captures prompts from the current session. If you work across multiple sessions before committing, only the committing session's prompts are recorded.
 - Requires Python 3 (pre-installed on macOS and most Linux).
+- Codex capture requires `CODEX_THREAD_ID` to be present in the commit process environment.
+- Codex relies on local `~/.codex/sessions` JSONL structure.
+- Codex notes grow across commits in the same session by design (session-start capture).
+
+## Development
+
+Run parser tests:
+
+```bash
+python3 -m unittest -v tests/test_codex_prompt_extractor.py
+```
 
 ## License
 
