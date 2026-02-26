@@ -17,6 +17,36 @@ HOOK_INPUT="$INPUT" python3 <<'PYTHON'
 import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 
+# Patterns that match common secret/credential formats.
+# Each tuple: (compiled regex, replacement text)
+SECRET_PATTERNS = [
+    # Anthropic API keys
+    (re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{86}-[A-Za-z0-9_-]{6}AA"), "[REDACTED_ANTHROPIC_KEY]"),
+    # OpenAI API keys
+    (re.compile(r"sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}"), "[REDACTED_OPENAI_KEY]"),
+    (re.compile(r"sk-proj-[A-Za-z0-9_-]{40,}"), "[REDACTED_OPENAI_KEY]"),
+    # AWS access keys
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]"),
+    # AWS secret keys (40 char base64-ish after common prefixes)
+    (re.compile(r"(?<=[:= '\"])[A-Za-z0-9/+=]{40}(?=[ '\"\n])"), "[REDACTED_AWS_SECRET]"),
+    # GitHub tokens
+    (re.compile(r"gh[pousr]_[A-Za-z0-9_]{36,}"), "[REDACTED_GITHUB_TOKEN]"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{22}_[A-Za-z0-9_]{59}"), "[REDACTED_GITHUB_TOKEN]"),
+    # Generic long hex/base64 strings that look like secrets (64+ chars)
+    (re.compile(r"(?<![A-Za-z0-9/])[A-Za-z0-9/+=_-]{64,}(?![A-Za-z0-9/])"), "[REDACTED_LONG_SECRET]"),
+    # Bearer tokens
+    (re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]{20,}"), "Bearer [REDACTED_TOKEN]"),
+    # Generic "secret/key/token/password = value" patterns
+    (re.compile(r"(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token|password|access[_-]?token|private[_-]?key)\s*[=:]\s*['\"]?[^\s'\"]{8,}"), r"\1=[REDACTED]"),
+]
+
+
+def redact_secrets(text):
+    """Replace likely secrets/credentials with redaction markers."""
+    for pattern, replacement in SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 def main():
     try:
@@ -64,7 +94,7 @@ def main():
         "",
     ]
     for i, prompt in enumerate(prompts, 1):
-        lines.append(f"**{i}.** {prompt}")
+        lines.append(f"**{i}.** {redact_secrets(prompt)}")
         lines.append("")
 
     note = "\n".join(lines)
@@ -126,9 +156,11 @@ def extract_prompts(transcript_path):
                             found_current_commit = True
                             break
                         else:
-                            # Previous commit -- stop collecting
-                            prompts.reverse()
-                            return prompts
+                            if prompts:
+                                # We have prompts, stop here
+                                prompts.reverse()
+                                return prompts
+                            # No prompts between commits (multi-commit turn), keep looking
 
         # Collect user prompts (only after we've passed the current commit)
         if found_current_commit and rec_type == "user":
@@ -136,10 +168,27 @@ def extract_prompts(transcript_path):
             if text:
                 if len(text) > 2000:
                     text = text[:2000] + "... [truncated]"
+                mode = extract_mode(record)
+                if mode:
+                    text = f"[{mode}] {text}"
                 prompts.append(text)
 
     prompts.reverse()
     return prompts
+
+
+MODE_LABELS = {
+    "plan": "plan",
+    "dontAsk": "auto-accept",
+    "bypassPermissions": "bypass",
+    "acceptEdits": "accept-edits",
+}
+
+
+def extract_mode(record):
+    """Return a readable mode label if the user record has a non-default permissionMode."""
+    raw = record.get("permissionMode", "")
+    return MODE_LABELS.get(raw, "")
 
 
 def extract_text(record):

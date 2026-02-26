@@ -1019,7 +1019,146 @@ test_capture_long_prompt_truncation() {
 
 
 # ============================================================
-# E2E tests (optional — require ANTHROPIC_API_KEY + claude CLI)
+# Secret redaction
+# ============================================================
+
+test_redact_anthropic_key() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    # Build a fake Anthropic key dynamically to avoid triggering GitHub push protection
+    local fake_key
+    fake_key="sk-ant-api03-$(python3 -c "print('A' * 86)")-$(python3 -c "print('A' * 4)")AA"
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Here is my key ${fake_key} please use it" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"REDACTED"* && "$note" != *"sk-ant-api03"* ]]; then
+        pass "redacts Anthropic API keys"
+    else
+        fail "redacts Anthropic API keys" "note: ${note:0:200}"
+    fi
+}
+
+test_redact_github_token() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Use this token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn for auth" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"REDACTED"* && "$note" != *"ghp_"* ]]; then
+        pass "redacts GitHub tokens"
+    else
+        fail "redacts GitHub tokens" "note: ${note:0:200}"
+    fi
+}
+
+test_redact_aws_key() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:My AWS key is AKIAIOSFODNN7EXAMPLE" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"REDACTED"* && "$note" != *"AKIAIOSFODNN7"* ]]; then
+        pass "redacts AWS access keys"
+    else
+        fail "redacts AWS access keys" "note: ${note:0:200}"
+    fi
+}
+
+test_redact_generic_secret_assignment() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Set api_key=super_secret_value_12345678 in the config" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"REDACTED"* && "$note" != *"super_secret"* ]]; then
+        pass "redacts generic key=value secrets"
+    else
+        fail "redacts generic key=value secrets" "note: ${note:0:200}"
+    fi
+}
+
+test_redact_preserves_normal_text() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Add a login form with username and password fields" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"login form with username and password fields"* && "$note" != *"REDACTED"* ]]; then
+        pass "preserves normal text (no false positives)"
+    else
+        fail "preserves normal text" "note: ${note:0:200}"
+    fi
+}
+
+
+# ============================================================
+# E2E tests (optional, require ANTHROPIC_API_KEY + claude CLI)
 # ============================================================
 
 test_e2e_basic_commit() {
@@ -1158,6 +1297,13 @@ main() {
     test_capture_empty_transcript
     test_capture_malformed_json
     test_capture_long_prompt_truncation
+
+    section "secret redaction"
+    test_redact_anthropic_key
+    test_redact_github_token
+    test_redact_aws_key
+    test_redact_generic_secret_assignment
+    test_redact_preserves_normal_text
 
     section "E2E with Claude (optional)"
     test_e2e_basic_commit
