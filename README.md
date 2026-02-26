@@ -30,12 +30,14 @@ Run this inside any git repo:
 bash <(curl -fsSL https://raw.githubusercontent.com/Trailblaze-work/claude-git-prompt-magic/main/install-codex.sh)
 ```
 
-This installs `post-commit` helpers into `.git/hooks/`:
+This installs Codex parser scripts into `.codex/hooks/`:
 
 - `capture-codex-prompts.sh`
 - `codex_prompt_extractor.py`
 
-The installer appends a marked block to `.git/hooks/post-commit` (idempotent) and configures git notes display/fetch.
+It also installs an idempotent shim block into the repo's effective `post-commit` hook that executes `.codex/hooks/capture-codex-prompts.sh`.
+
+If you commit `.codex/hooks/`, updates to Codex capture logic propagate to teammates through normal `git pull` (no stale copied hook scripts).
 
 ## How it works
 
@@ -53,13 +55,14 @@ Manual commits are completely unaffected — the hooks only fire inside Claude C
 
 For Codex, a `post-commit` hook runs after each commit:
 
-1. Reads `CODEX_THREAD_ID` from the environment (exits fast if missing)
-2. Finds the latest session file matching that thread in `~/.codex/sessions`
-3. Pairs `exec_command` `git commit` calls with their outputs to detect commit hashes
-4. Collects user prompts from the start of the session up to the current commit boundary
-5. Filters bootstrap messages (`AGENTS.md` injection + `<environment_context>`)
-6. Attaches prompts as a git note in `refs/notes/claude-prompts`
-7. Pushes that note ref to origin (best effort)
+1. Hook shim resolves repo root and executes `.codex/hooks/capture-codex-prompts.sh`
+2. Capture script reads `CODEX_THREAD_ID` from the environment (exits fast if missing)
+3. Parser finds latest session file matching that thread in `~/.codex/sessions`
+4. Parser pairs `exec_command` `git commit` calls with outputs to find commit boundaries
+5. Collects user prompts from session start up to the current commit boundary
+6. Filters bootstrap messages (`AGENTS.md` injection + `<environment_context>`)
+7. Attaches prompts as a git note in `refs/notes/claude-prompts`
+8. Pushes that note ref to origin (best effort)
 
 ## What it looks like
 
@@ -136,8 +139,9 @@ git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:r
 For Codex installs:
 
 ```bash
-rm .git/hooks/capture-codex-prompts.sh .git/hooks/codex_prompt_extractor.py
-# Remove the marker block from .git/hooks/post-commit:
+rm .codex/hooks/capture-codex-prompts.sh .codex/hooks/codex_prompt_extractor.py
+# Remove the marker block from the effective post-commit hook
+# (typically .git/hooks/post-commit unless core.hooksPath is customized):
 #   # >>> codex-git-prompt-magic >>>
 #   ...
 #   # <<< codex-git-prompt-magic <<<

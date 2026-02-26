@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="Trailblaze-work/claude-git-prompt-magic"
-RAW="https://raw.githubusercontent.com/$REPO/main"
+RAW="${CODEX_PROMPT_MAGIC_RAW:-https://raw.githubusercontent.com/$REPO/main}"
 
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
     echo "Error: not inside a git repository." >&2
@@ -16,14 +16,25 @@ fi
 
 echo "Installing Codex prompt capture..."
 
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# If only a global hooksPath is configured, keep Codex setup repo-local.
+if ! git config --local --get core.hooksPath >/dev/null 2>&1; then
+    git config --local core.hooksPath .git/hooks
+fi
+
 HOOK_DIR="$(git rev-parse --git-path hooks)"
 mkdir -p "$HOOK_DIR"
 
-curl -fsSL "$RAW/hooks/capture-codex-prompts.sh" -o "$HOOK_DIR/capture-codex-prompts.sh"
-curl -fsSL "$RAW/hooks/codex_prompt_extractor.py" -o "$HOOK_DIR/codex_prompt_extractor.py"
-chmod +x "$HOOK_DIR/capture-codex-prompts.sh" "$HOOK_DIR/codex_prompt_extractor.py"
+PROJECT_HOOK_DIR="$REPO_ROOT/.codex/hooks"
+mkdir -p "$PROJECT_HOOK_DIR"
 
-echo "  Codex hook scripts installed to $HOOK_DIR/"
+curl -fsSL "$RAW/hooks/capture-codex-prompts.sh" -o "$PROJECT_HOOK_DIR/capture-codex-prompts.sh"
+curl -fsSL "$RAW/hooks/codex_prompt_extractor.py" -o "$PROJECT_HOOK_DIR/codex_prompt_extractor.py"
+chmod +x "$PROJECT_HOOK_DIR/capture-codex-prompts.sh" "$PROJECT_HOOK_DIR/codex_prompt_extractor.py"
+
+echo "  Codex scripts installed to .codex/hooks/"
+echo "  Git hook directory: $HOOK_DIR/"
 
 POST_COMMIT="$HOOK_DIR/post-commit"
 if [[ ! -f "$POST_COMMIT" ]]; then
@@ -45,9 +56,10 @@ begin = "# >>> codex-git-prompt-magic >>>"
 end = "# <<< codex-git-prompt-magic <<<"
 block = (
     f"{begin}\n"
-    'HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
-    'if [[ -x "$HOOK_DIR/capture-codex-prompts.sh" ]]; then\n'
-    '    "$HOOK_DIR/capture-codex-prompts.sh" || true\n'
+    'REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
+    'SCRIPT="$REPO_ROOT/.codex/hooks/capture-codex-prompts.sh"\n'
+    'if [[ -x "$SCRIPT" ]]; then\n'
+    '    "$SCRIPT" || true\n'
     "fi\n"
     f"{end}\n"
 )
@@ -69,6 +81,7 @@ PYTHON
 
 chmod +x "$POST_COMMIT"
 echo "  post-commit hook configured"
+echo "  Post-commit shim points to repo-tracked .codex/hooks scripts"
 
 git config --local notes.displayRef "refs/notes/claude-prompts"
 FETCH_REF="+refs/notes/claude-prompts:refs/notes/claude-prompts"
@@ -82,4 +95,5 @@ fi
 echo "  Git configured to display/fetch prompt notes"
 echo ""
 echo "Done! Codex commits now capture prompts when CODEX_THREAD_ID is present."
+echo "For team-wide updates, commit .codex/hooks/."
 echo "View notes with: git log --notes=claude-prompts"
