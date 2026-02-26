@@ -10,7 +10,15 @@ Run this inside any git repo:
 bash <(curl -fsSL https://raw.githubusercontent.com/Trailblaze-work/claude-git-prompt-magic/main/install.sh)
 ```
 
-That's it. Commit the `.claude/` directory and every developer who uses Claude Code gets it automatically.
+This creates `.claude/hooks/` with two shell scripts and adds hook configuration to `.claude/settings.json`.
+
+### Making it automatic for your team
+
+If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture automatically — zero setup on their end. This is the recommended approach.
+
+`.claude/settings.json` is Claude Code's [shared project config](https://docs.anthropic.com/en/docs/claude-code/settings). Committing it also shares any other project-level Claude Code settings (like enabled plugins or allowed tools) with the team — which is generally the point of that file. Personal overrides go in `.claude/settings.local.json`, which the installer adds to `.gitignore`.
+
+If you'd rather **not commit `.claude/`**, each developer runs the install one-liner above individually. Same result, just not automatic.
 
 ## How it works
 
