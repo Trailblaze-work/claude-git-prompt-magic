@@ -77,7 +77,7 @@ class CodexPromptExtractorTests(unittest.TestCase):
         self.assertEqual([e.commit_hash for e in events], ["abc1234", "def5678"])
         self.assertEqual([e.call_id for e in events], ["c1", "c2"])
 
-    def test_extract_prompts_between_previous_and_current_commit(self):
+    def test_extract_prompts_from_session_start(self):
         records = [
             user_message("initial ask"),
             assistant_message("working"),
@@ -91,7 +91,7 @@ class CodexPromptExtractorTests(unittest.TestCase):
         ]
 
         prompts = self.m.extract_prompts_for_commit(records, "def5678")
-        self.assertEqual(prompts, ["add retries", "add tests"])
+        self.assertEqual(prompts, ["initial ask", "add retries", "add tests"])
 
     def test_filters_bootstrap_user_messages(self):
         records = [
@@ -134,7 +134,19 @@ class CodexPromptExtractorTests(unittest.TestCase):
         ]
 
         prompts = self.m.extract_prompts_for_commit(records, "def5678")
-        self.assertEqual(prompts, ["new request 1", "new request 2"])
+        self.assertEqual(prompts, ["old request", "new request 1", "new request 2"])
+
+    def test_extract_prompts_before_target_commit_boundary(self):
+        records = [
+            user_message("from start"),
+            user_message("still before c1"),
+            commit_call("c1"),
+            commit_output("c1", "abc1234"),
+            user_message("after c1"),
+        ]
+
+        prompts = self.m.extract_prompts_for_commit(records, "abc1234")
+        self.assertEqual(prompts, ["from start", "still before c1"])
 
 
 if __name__ == "__main__":

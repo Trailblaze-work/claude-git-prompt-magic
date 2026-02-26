@@ -155,20 +155,14 @@ def extract_prompts_for_commit(records: list[dict], commit_hash: Optional[str]) 
     events = extract_commit_events(records)
     commit_idx = find_commit_index(events, commit_hash)
     current_boundary: Optional[int] = None
-    if commit_idx is None:
-        # post-commit can run before the current commit's tool output is flushed
-        # to the session file; in that case, capture prompts after the latest
-        # known commit boundary until EOF.
-        previous_boundary = events[-1].call_index if events else -1
-    else:
+    if commit_idx is not None:
         current_boundary = events[commit_idx].call_index
-        previous_boundary = events[commit_idx - 1].call_index if commit_idx > 0 else -1
+    # If the current commit event is not yet flushed (post-commit race),
+    # capture from session start to EOF.
 
     prompts: list[str] = []
 
     for idx, record in enumerate(records):
-        if idx <= previous_boundary:
-            continue
         if current_boundary is not None and idx >= current_boundary:
             continue
         if record.get("type") != "response_item":

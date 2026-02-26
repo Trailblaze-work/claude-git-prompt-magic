@@ -56,7 +56,7 @@ For Codex, a `post-commit` hook runs after each commit:
 1. Reads `CODEX_THREAD_ID` from the environment (exits fast if missing)
 2. Finds the latest session file matching that thread in `~/.codex/sessions`
 3. Pairs `exec_command` `git commit` calls with their outputs to detect commit hashes
-4. Collects user prompts between the previous commit boundary and current commit
+4. Collects user prompts from the start of the session up to the current commit boundary
 5. Filters bootstrap messages (`AGENTS.md` injection + `<environment_context>`)
 6. Attaches prompts as a git note in `refs/notes/claude-prompts`
 7. Pushes that note ref to origin (best effort)
@@ -151,6 +151,7 @@ git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:r
 - Requires Python 3 (pre-installed on macOS and most Linux).
 - Codex capture requires `CODEX_THREAD_ID` to be present in the commit process environment.
 - Codex relies on local `~/.codex/sessions` JSONL structure.
+- Codex notes grow across commits in the same session by design (session-start capture).
 
 ## Development
 
