@@ -1,0 +1,55 @@
+## Claude Code Prompts
+
+**Session**: adde43cd-e483-4b40-98f3-7a3c2418fea7
+**Captured**: 2026-02-26T20:02:51Z
+
+### Prompts
+
+**1.** [Request interrupted by user for tool use]
+
+**2.** Implement the following plan:
+
+# Plan: Verify & Ensure Worktree Compatibility
+
+## Context
+
+We investigated whether `claude-git-prompt-magic` works when Claude Code runs in different worktrees (using native `claude --worktree` support). Initial analysis suggested path issues, but deeper investigation revealed:
+
+- **Hooks are tracked in git** (`.claude/hooks/`, `.claude/settings.json`) → present in all worktree checkouts
+- **Git notes are shared** across worktrees (stored in common `.git` dir) → verified in `/tmp` test
+- **Git config is shared** across worktrees (`git config --local` writes to shared config) → verified
+- **`$CLAUDE_PROJECT_DIR`** currently points to main repo root (known bug #27343), but even if fixed to point to worktree, hooks would still be found since they're tracked
+
+**Only gap:** `.claude/settings.local.json` (permission allowlists) is gitignored → users get permission prompts in worktree sessions. This is minor and expected.
+
+## Step 1: End-to-end verification with real Claude sessions
+
+Create a test repo and verify the full flow using non-interactive Claude:
+
+```bash
+# 1. Create test repo in /tmp with hooks installed
+cd /tmp && rm -rf wt-verify && mkdir wt-verify && cd wt-verify
+git init && git commit --allow-empty -m "init"
+
+# 2. Install claude-git-prompt-magic (copy hooks + settings from main project)
+mkdir -p .claude/hooks
+cp /Users/gilles/Documents/trailblaze/claude-git-prompt-magic/.claude/hooks/*.sh .claude/hooks/
+cp /Users/gilles/Documents/trailblaze/claude-git-prompt-magic/.claude/settings.json .claude/settings.json
+chmod +x .claude/hooks/*.sh
+git add .claude/ && git commit -m "Add claude-git-prompt-magic"
+
+# 3. Create a worktree (simulating what Claude Code does)
+mkdir -p .claude/worktrees
+git worktree add .claude/worktrees/test-task -b worktree-test-task
+
+# 4. Verify hooks are present in worktree
+ls -la .claude/worktrees/test-task/.claude/hooks/
+
+# 5. Run non-interactive Claude session in the worktree to create a commit
+cd .claude/wo... [truncated]
+
+**3.** [accept-edits] Remove emdashes from the README, use a properly human writing style
+
+**4.** [accept-edits] please set up the secret on the repo and let's commit and push this
+
+**5.** [accept-edits] [REDACTED_ANTHROPIC_KEY]
