@@ -1,0 +1,95 @@
+## Claude Code Prompts
+
+<!-- format:v2 -->
+
+**Session**: d4ab7e9c-c831-4ff1-99a9-cd4350feb7dc
+**Slug**: stateful-hugging-swing
+**Captured**: 2026-02-26T20:23:09Z
+**Branch**: main
+**Model**: claude-opus-4-6
+**Client**: 2.1.59
+**Permission**: accept-edits
+
+### Prompts
+
+**1.** [Request interrupted by user for tool use]
+
+**2.** Implement the following plan:
+
+# Plan: Enriched Git Note Format (v2)
+
+## Context
+
+The git notes currently capture only prompts and session ID. The transcript JSONL contains much richer metadata (model, token usage, tools used, client version, branch, etc.) that we're leaving on the table. This data is valuable both for humans reviewing commits and for LLMs consuming git history to understand how code was written.
+
+MCP server lists and skills aren't directly exposed to hooks, but we can infer them from tool usage in the transcript: MCP tools follow the `mcp__{server}__{method}` naming pattern, and skill invocations show up as `Skill` tool uses.
+
+## New Format
+
+```markdown
+## Claude Code Prompts
+
+<!-- format:v2 -->
+
+**Session**: f0d06f5e-5e70-4085-960f-bccb9dd11afb
+**Slug**: starry-hugging-otter
+**Captured**: 2026-02-26T14:23:05Z
+**Branch**: feature/avatar-upload
+**Model**: claude-opus-4-6
+**Client**: 2.1.59
+**Permission**: accept-edits
+
+### Prompts
+
+**1.** Add avatar upload to the user profile page. Max 2MB, jpeg and png only.
+
+**2.** Also add a circular crop preview before saving
+
+**3.** [auto-accept] Looks good, commit and push
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Turns | 3 user, 8 assistant |
+| Tokens in | 45,230 |
+| Tokens out | 12,847 |
+| Cache read | 128,450 |
+| Cache write | 8,200 |
+
+### Tools
+
+Edit(4) Bash(6) Read(3) Grep(2) Glob(1)
+
+### MCP Servers
+
+notion, slack
+```
+
+### Format design decisions
+
+- **`<!-- format:v2 -->`** HTML comment: invisible in rendered markdown, trivially parseable by regex, doesn't break `git log` output. Notes without it are implicitly v1.
+- **Flat `**Key**: Value` metadata** rather than YAML frontmatter: renders well in terminals and GitHub, extensible (add new keys without breaking consumers).
+- **Single `Model` field** with comma-separated values when multiple models used in a session (rare). Ordered by first appearance.
+- **Stats as markdown table**: renders in GitHub, still readable as plaintext.
+- **Tools as comp... [truncated]
+
+**3.** [accept-edits] don't mention v2 in the docs, nobody was using this before
+
+**4.** [accept-edits] have you installed all the new versions of the hooks etc in this repo itself? so the new code runs when we commit and push this
+
+**5.** [accept-edits] please commit and push
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Turns | 46 user, 63 assistant |
+| Tokens in | 6,121 |
+| Tokens out | 13,114 |
+| Cache read | 3,474,056 |
+| Cache write | 153,803 |
+
+### Tools
+
+TaskUpdate(10) Edit(9) Read(9) Bash(8) TaskCreate(5)
