@@ -22,7 +22,7 @@ If you'd rather **not commit `.claude/`**, each developer runs the install one-l
 
 ## How it works
 
-A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks) fires after every Bash command. For non-commits it exits in ~1ms. When it detects a successful `git commit`, it:
+A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks) fires after every Bash command. For non-commits it exits in ~1ms. When it detects a successful `git commit`, it rises to the occasion:
 
 1. Extracts the commit hash from the tool output
 2. Reads the session transcript (JSONL)
