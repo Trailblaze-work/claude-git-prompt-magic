@@ -1,0 +1,10 @@
+## Claude Code Prompts
+
+**Session**: 38661b7d-e113-4f56-adf0-6da757f1d697
+**Captured**: 2026-02-26T14:35:49Z
+
+### Prompts
+
+**1.** Is committing the .claude directory necessary for this to work?
+
+**2.** OK, please specify that better in the README.md, that committing the .claude is what makes this work automatically for everyone on the team going forward. Are there any other side-effects to committing .claude ?
