@@ -126,9 +126,11 @@ def extract_prompts(transcript_path):
                             found_current_commit = True
                             break
                         else:
-                            # Previous commit -- stop collecting
-                            prompts.reverse()
-                            return prompts
+                            if prompts:
+                                # We have prompts, stop here
+                                prompts.reverse()
+                                return prompts
+                            # No prompts between commits (multi-commit turn), keep looking
 
         # Collect user prompts (only after we've passed the current commit)
         if found_current_commit and rec_type == "user":
@@ -136,10 +138,27 @@ def extract_prompts(transcript_path):
             if text:
                 if len(text) > 2000:
                     text = text[:2000] + "... [truncated]"
+                mode = extract_mode(record)
+                if mode:
+                    text = f"[{mode}] {text}"
                 prompts.append(text)
 
     prompts.reverse()
     return prompts
+
+
+MODE_LABELS = {
+    "plan": "plan",
+    "dontAsk": "auto-accept",
+    "bypassPermissions": "bypass",
+    "acceptEdits": "accept-edits",
+}
+
+
+def extract_mode(record):
+    """Return a readable mode label if the user record has a non-default permissionMode."""
+    raw = record.get("permissionMode", "")
+    return MODE_LABELS.get(raw, "")
 
 
 def extract_text(record):
