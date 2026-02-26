@@ -2,6 +2,10 @@
 
 Automatically captures Claude Code prompts and attaches them to git commits using [git notes](https://git-scm.com/docs/git-notes). Zero dependencies beyond Python 3 and bash.
 
+## Why prompts belong in version control
+
+The prompts that shape AI-generated code are as important as the code itself. When they live alongside commits, developers can learn from each other. Seeing how a teammate guided an AI through a tricky refactor teaches you as much as reading the refactor. It also creates an audit trail: not just *what* changed, but *why* and *how* it was directed. That matters for code review, onboarding, and compliance. We think every AI-assisted change should carry the context of its creation.
+
 ## Install
 
 Run this inside any git repo:
@@ -14,9 +18,9 @@ This creates `.claude/hooks/` with two shell scripts and adds hook configuration
 
 ### Making it automatic for your team
 
-If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture baked in — zero setup on their end. This is the recommended approach.
+If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture baked in, with zero setup on their end. This is the recommended approach.
 
-`.claude/settings.json` is Claude Code's [shared project config](https://docs.anthropic.com/en/docs/claude-code/settings). Committing it also shares any other project-level Claude Code settings (like enabled plugins or allowed tools) with the team — which is generally the point of that file. Personal overrides go in `.claude/settings.local.json`, which the installer adds to `.gitignore`.
+`.claude/settings.json` is Claude Code's [shared project config](https://docs.anthropic.com/en/docs/claude-code/settings). Committing it also shares any other project-level Claude Code settings (like enabled plugins or allowed tools) with the team, which is generally the point of that file. Personal overrides go in `.claude/settings.local.json`, which the installer adds to `.gitignore`.
 
 If you'd rather **not commit `.claude/`**, each developer runs the install one-liner above individually. Same result, just not automatic.
 
@@ -32,7 +36,7 @@ A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/
 
 A SessionStart hook auto-configures `git fetch` to pull notes and `git log` to display them.
 
-Manual commits are completely unaffected — the hooks only fire inside Claude Code.
+Manual commits are completely unaffected. The hooks only fire inside Claude Code.
 
 ## What it looks like
 
@@ -81,7 +85,7 @@ $ git notes --ref=claude-prompts show HEAD
 **3.** Looks good, commit and push
 ```
 
-Manual commits have no note — they just work normally:
+Manual commits have no note and just work normally:
 
 ```
 $ git log --oneline --notes=claude-prompts -3
@@ -105,6 +109,18 @@ rm .claude/hooks/capture-prompts.sh .claude/hooks/setup-notes.sh
 git config --local --unset notes.displayRef
 git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:refs/notes/claude-prompts"
 ```
+
+## Worktree support
+
+Works out of the box with `claude --worktree` and manual `git worktree` setups. Hooks are tracked in git so they're present in every worktree checkout, git notes are stored in the shared `.git` directory so they're visible across all worktrees, and git config is shared automatically. The only difference: `.claude/settings.local.json` (permission allowlists) is gitignored, so you'll get permission prompts in new worktree sessions.
+
+## Testing
+
+```bash
+bash test/run-tests.sh
+```
+
+Set `ANTHROPIC_API_KEY` and install the `claude` CLI to also run E2E tests that exercise the full flow with real Claude Code sessions.
 
 ## Limitations
 
