@@ -9,13 +9,14 @@ The prompts that shape AI-generated code are as important as the code itself. Wh
 ## Install
 
 ```bash
-claude plugin install github:Trailblaze-work/claude-prompt-trail
+claude plugin marketplace add Trailblaze-work/claude-code-marketplace
+claude plugin install prompt-trail@trailblaze
 ```
 
 To install for your whole team (commits the plugin reference to `.claude/settings.json`):
 
 ```bash
-claude plugin install github:Trailblaze-work/claude-prompt-trail --scope project
+claude plugin install prompt-trail@trailblaze --scope project
 ```
 
 Toggle the plugin on or off:
@@ -32,7 +33,7 @@ A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/
 1. Extracts the commit hash from the tool output
 2. Reads the session transcript (JSONL)
 3. Follows the breadcrumbs backward to collect every user prompt since the previous commit
-4. Attaches them as a git note in `refs/notes/claude-prompts`
+4. Attaches them as a git note in `refs/notes/claude-prompt-trail`
 5. Pushes the note to origin
 
 A SessionStart hook auto-configures `git fetch` to pull notes and `git log` to display them.
@@ -44,7 +45,7 @@ Manual commits are completely unaffected. The hooks only fire inside Claude Code
 After a Claude Code session that makes a commit:
 
 ```
-$ git log --notes=claude-prompts -1
+$ git log --notes=claude-prompt-trail -1
 
 commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 Author: Jane Smith <jane@example.com>
@@ -52,7 +53,7 @@ Date:   Wed Feb 26 15:23:03 2026 +0100
 
     Add user avatar upload with size validation
 
-Notes (claude-prompts):
+Notes (claude-prompt-trail):
     ## Claude Code Prompts
 
     <!-- format:v2 -->
@@ -95,7 +96,7 @@ Notes (claude-prompts):
 View the raw note for any specific commit:
 
 ```
-$ git notes --ref=claude-prompts show HEAD
+$ git notes --ref=claude-prompt-trail show HEAD
 
 ## Claude Code Prompts
 
@@ -139,10 +140,10 @@ notion, slack
 Manual commits have no note and just work normally:
 
 ```
-$ git log --oneline --notes=claude-prompts -3
+$ git log --oneline --notes=claude-prompt-trail -3
 
 a1b2c3d Add user avatar upload with size validation
-        Notes (claude-prompts):
+        Notes (claude-prompt-trail):
             ## Claude Code Prompts
             ...
 
@@ -181,7 +182,7 @@ To also clean up local git config:
 
 ```bash
 git config --local --unset notes.displayRef
-git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:refs/notes/claude-prompts"
+git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail"
 ```
 
 ## Worktree support
@@ -199,7 +200,7 @@ Set `ANTHROPIC_API_KEY` and install the `claude` CLI to also run E2E tests that 
 ## Limitations
 
 - Only captures prompts from the current session. If you work across multiple sessions before committing, only the committing session's prompts are recorded.
-- Each commit triggers a `git push origin refs/notes/claude-prompts` to sync notes. This adds a few seconds of latency per commit (up to 15s with a slow or unreachable remote). The push fails silently if offline.
+- Each commit triggers a `git push origin refs/notes/claude-prompt-trail` to sync notes. This adds a few seconds of latency per commit (up to 15s with a slow or unreachable remote). The push fails silently if offline.
 - Requires Python 3 (pre-installed on macOS and most Linux).
 
 ## License

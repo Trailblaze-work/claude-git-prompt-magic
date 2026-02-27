@@ -174,7 +174,7 @@ test_setup_notes_configures_displayref() {
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
-    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+    if [[ "$display_ref" == "refs/notes/claude-prompt-trail" ]]; then
         pass "setup-notes sets notes.displayRef"
     else
         fail "setup-notes sets notes.displayRef" "got '$display_ref'"
@@ -189,8 +189,8 @@ test_setup_notes_configures_fetch_refspec() {
     bash "$HOOKS_DIR/setup-notes.sh"
 
     local fetch
-    fetch=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep "claude-prompts" || echo "")
-    if [[ "$fetch" == "+refs/notes/claude-prompts:refs/notes/claude-prompts" ]]; then
+    fetch=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep "claude-prompt-trail" || echo "")
+    if [[ "$fetch" == "+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail" ]]; then
         pass "setup-notes adds fetch refspec for notes"
     else
         fail "setup-notes adds fetch refspec for notes" "got '$fetch'"
@@ -207,11 +207,11 @@ test_setup_notes_idempotent() {
     bash "$HOOKS_DIR/setup-notes.sh"
 
     local count
-    count=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep -c "claude-prompts" || echo "0")
+    count=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep -c "claude-prompt-trail" || echo "0")
     if [[ "$count" -eq 1 ]]; then
         pass "setup-notes is idempotent (no duplicate fetch refspecs)"
     else
-        fail "setup-notes is idempotent" "got $count fetch refspecs for claude-prompts"
+        fail "setup-notes is idempotent" "got $count fetch refspecs for claude-prompt-trail"
     fi
 }
 
@@ -221,12 +221,12 @@ test_setup_notes_cleans_push_refspec() {
     git remote add origin "https://example.com/test.git"
 
     # Simulate leftover push refspec from earlier version
-    git config --add --local remote.origin.push "+refs/notes/claude-prompts:refs/notes/claude-prompts"
+    git config --add --local remote.origin.push "+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail"
 
     bash "$HOOKS_DIR/setup-notes.sh"
 
     local push
-    push=$(git config --local --get-all remote.origin.push 2>/dev/null | grep "claude-prompts" || echo "")
+    push=$(git config --local --get-all remote.origin.push 2>/dev/null | grep "claude-prompt-trail" || echo "")
     if [[ -z "$push" ]]; then
         pass "setup-notes removes leftover push refspec"
     else
@@ -243,7 +243,7 @@ test_setup_notes_no_remote() {
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
-    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+    if [[ "$display_ref" == "refs/notes/claude-prompt-trail" ]]; then
         pass "setup-notes works without a remote"
     else
         fail "setup-notes works without a remote" "got '$display_ref'"
@@ -283,7 +283,7 @@ test_capture_attaches_note() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Claude Code Prompts"* && "$note" == *"Add a test file"* && "$note" == *"Commit it"* ]]; then
         pass "attaches note with prompts"
     else
@@ -316,7 +316,7 @@ test_capture_note_format() {
     make_hook_input "$hash" "$transcript" "session-abc-123" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
 
     local ok=true
     [[ "$note" == *"## Claude Code Prompts"* ]] || ok=false
@@ -355,7 +355,7 @@ test_capture_multiple_prompts() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     local count
     count=$(echo "$note" | grep -c '^\*\*[0-9]' || echo "0")
     if [[ "$count" -eq 3 ]]; then
@@ -373,7 +373,7 @@ test_capture_ignores_non_commits() {
         | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 0 ]]; then
         pass "ignores non-commit commands"
     else
@@ -389,7 +389,7 @@ test_capture_ignores_failed_commits() {
         | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 0 ]]; then
         pass "ignores failed commits (no [branch hash] in output)"
     else
@@ -427,7 +427,7 @@ test_capture_amend_overwrites_note() {
     make_hook_input "$new_hash" "$transcript" "session-1" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Amend with updated content"* ]]; then
         pass "amend overwrites previous note"
     else
@@ -460,7 +460,7 @@ EOF
     echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Work on feature"* ]]; then
         pass "handles branch names with slashes"
     else
@@ -495,7 +495,7 @@ EOF
     echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Fix something in detached HEAD"* ]]; then
         pass "handles detached HEAD commit format"
     else
@@ -529,7 +529,7 @@ EOF
     echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Initialize orphan branch"* ]]; then
         pass "handles root-commit format"
     else
@@ -581,7 +581,7 @@ test_multi_commit_session() {
 
     # First commit note should have "Create file a" but NOT "create file b"
     local note1
-    note1=$(git notes --ref=claude-prompts show HEAD~1 2>/dev/null || echo "")
+    note1=$(git notes --ref=claude-prompt-trail show HEAD~1 2>/dev/null || echo "")
     if [[ "$note1" == *"Create file a"* && "$note1" != *"create file b"* ]]; then
         pass "multi-commit: first note has only first prompts"
     else
@@ -590,7 +590,7 @@ test_multi_commit_session() {
 
     # Second commit note should have "create file b" but NOT "Create file a"
     local note2
-    note2=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note2=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note2" == *"create file b"* || "$note2" == *"Now create file b"* ]] && [[ "$note2" != *"Create file a"* ]]; then
         pass "multi-commit: second note has only second prompts"
     else
@@ -652,8 +652,8 @@ EOF
 
     # Verify both notes exist
     local note_a note_b
-    note_a=$(git notes --ref=claude-prompts show branch-a 2>/dev/null || echo "")
-    note_b=$(git notes --ref=claude-prompts show branch-b 2>/dev/null || echo "")
+    note_a=$(git notes --ref=claude-prompt-trail show branch-a 2>/dev/null || echo "")
+    note_b=$(git notes --ref=claude-prompt-trail show branch-b 2>/dev/null || echo "")
 
     if [[ "$note_a" == *"session A"* ]]; then
         pass "parallel: session A note attached"
@@ -703,7 +703,7 @@ EOF
     done
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 3 ]]; then
         pass "parallel: all 3 notes created without conflict"
     else
@@ -799,7 +799,7 @@ test_setup_notes_in_worktree() {
     # Config should be visible from worktree
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
-    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+    if [[ "$display_ref" == "refs/notes/claude-prompt-trail" ]]; then
         pass "setup-notes works in worktree"
     else
         fail "setup-notes works in worktree" "got '$display_ref'"
@@ -808,7 +808,7 @@ test_setup_notes_in_worktree() {
     # And from main worktree (shared config)
     cd "$TEST_DIR"
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
-    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+    if [[ "$display_ref" == "refs/notes/claude-prompt-trail" ]]; then
         pass "worktree config shared with main"
     else
         fail "worktree config shared with main" "got '$display_ref'"
@@ -841,7 +841,7 @@ EOF
     echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Create a file in the worktree"* ]]; then
         pass "capture-prompts works in worktree"
     else
@@ -876,7 +876,7 @@ EOF
     # Check from main worktree
     cd "$TEST_DIR"
     local note
-    note=$(git notes --ref=claude-prompts show test-wt 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show test-wt 2>/dev/null || echo "")
     if [[ "$note" == *"Worktree work"* ]]; then
         pass "worktree note visible from main worktree"
     else
@@ -919,9 +919,9 @@ EOF
     # Both notes visible from either location
     local count_main count_wt
     cd "$TEST_DIR"
-    count_main=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count_main=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     cd "$TEST_DIR/wt"
-    count_wt=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count_wt=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
 
     if [[ "$count_main" -eq 2 && "$count_wt" -eq 2 ]]; then
         pass "notes shared between main and worktree (both see 2)"
@@ -951,7 +951,7 @@ test_note_has_v2_format_marker() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"<!-- format:v2 -->"* ]]; then
         pass "note has v2 format marker"
     else
@@ -977,7 +977,7 @@ test_note_includes_model() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"**Model**: claude-opus-4-6"* ]]; then
         pass "note includes model"
     else
@@ -1002,7 +1002,7 @@ test_note_includes_client_version() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"**Client**: 2.1.59"* ]]; then
         pass "note includes client version"
     else
@@ -1027,7 +1027,7 @@ test_note_includes_branch() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"**Branch**: feature/avatar-upload"* ]]; then
         pass "note includes branch"
     else
@@ -1059,7 +1059,7 @@ test_note_includes_stats() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     local ok=true
     [[ "$note" == *"### Stats"* ]] || ok=false
     [[ "$note" == *"Turns"* ]] || ok=false
@@ -1095,7 +1095,7 @@ test_note_includes_tools() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     local ok=true
     [[ "$note" == *"### Tools"* ]] || ok=false
     [[ "$note" == *"Edit(2)"* ]] || ok=false
@@ -1126,7 +1126,7 @@ test_note_includes_permission() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"**Permission**: accept-edits"* ]]; then
         pass "note includes permission mode (acceptEdits → accept-edits)"
     else
@@ -1160,7 +1160,7 @@ test_note_permission_mode_labels() {
         make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
         local note
-        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
         if [[ "$note" != *"**Permission**: $label"* ]]; then
             fail "MODE_LABELS: $raw_mode → $label" "note: $note"
             all_ok=false
@@ -1192,7 +1192,7 @@ test_multi_model_session() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"claude-sonnet-4-6"* && "$note" == *"claude-opus-4-6"* ]]; then
         pass "multi-model session lists both models"
     else
@@ -1220,7 +1220,7 @@ test_mcp_server_detection() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     local ok=true
     [[ "$note" == *"### MCP Servers"* ]] || ok=false
     [[ "$note" == *"notion"* ]] || ok=false
@@ -1249,7 +1249,7 @@ test_v2_backward_compat() {
     make_hook_input "$hash" "$transcript" "session-compat" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     local ok=true
     # v1 consumers expect these structural elements
     [[ "$note" == "## Claude Code Prompts"* ]] || ok=false
@@ -1285,7 +1285,7 @@ test_capture_no_transcript() {
         | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 0 ]]; then
         pass "gracefully handles missing transcript"
     else
@@ -1310,7 +1310,7 @@ test_capture_empty_transcript() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 0 ]]; then
         pass "gracefully handles empty transcript"
     else
@@ -1327,7 +1327,7 @@ test_capture_malformed_json() {
         | bash "$HOOKS_DIR/capture-prompts.sh" || true
 
     local count
-    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -eq 0 ]]; then
         pass "gracefully handles malformed JSON input"
     else
@@ -1356,7 +1356,7 @@ test_capture_long_prompt_verbatim() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"[truncated]"* ]]; then
         fail "long prompts are captured verbatim" "note was truncated"
     elif [[ "$note" == *"Fix the bug in line 0"* ]] && [[ ${#note} -gt 3000 ]]; then
@@ -1384,7 +1384,7 @@ test_capture_image_placeholder() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Look at this screenshot"* ]] && [[ "$note" == *"[image]"* ]]; then
         pass "image content replaced with [image] placeholder"
     else
@@ -1419,7 +1419,7 @@ test_redact_anthropic_key() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"REDACTED"* && "$note" != *"sk-ant-api03"* ]]; then
         pass "redacts Anthropic API keys"
     else
@@ -1445,7 +1445,7 @@ test_redact_github_token() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"REDACTED"* && "$note" != *"ghp_"* ]]; then
         pass "redacts GitHub tokens"
     else
@@ -1471,7 +1471,7 @@ test_redact_aws_key() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"REDACTED"* && "$note" != *"AKIAIOSFODNN7"* ]]; then
         pass "redacts AWS access keys"
     else
@@ -1497,7 +1497,7 @@ test_redact_generic_secret_assignment() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"REDACTED"* && "$note" != *"super_secret"* ]]; then
         pass "redacts generic key=value secrets"
     else
@@ -1523,7 +1523,7 @@ test_redact_preserves_normal_text() {
     make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
 
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"login form with username and password fields"* && "$note" != *"REDACTED"* ]]; then
         pass "preserves normal text (no false positives)"
     else
@@ -1612,7 +1612,7 @@ test_e2e_basic_commit() {
 
     if claude_commit "hello.txt" "Add hello.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
-        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
             pass "E2E: commit with note attached"
         else
@@ -1632,7 +1632,7 @@ test_e2e_note_has_v2_fields() {
 
     if claude_commit "fields.txt" "Add fields.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
-        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
         local ok=true
         [[ "$note" == *"format:v2"* ]] || { fail "E2E: note has v2 marker" "missing format:v2"; ok=false; }
         [[ "$note" == *"**Session**:"* ]] || { fail "E2E: note has Session field" "missing Session"; ok=false; }
@@ -1659,12 +1659,12 @@ test_e2e_worktree_commit() {
 
     if claude_commit "wt.txt" "Add wt.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
-        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
             pass "E2E: worktree commit with note"
 
             cd "$TEST_DIR"
-            note=$(git notes --ref=claude-prompts show worktree-test 2>/dev/null || echo "")
+            note=$(git notes --ref=claude-prompt-trail show worktree-test 2>/dev/null || echo "")
             if [[ "$note" == *"Claude Code Prompts"* ]]; then
                 pass "E2E: worktree note visible from main"
             else
@@ -1691,7 +1691,7 @@ test_e2e_no_plugin_dir_skips_capture() {
         return
     fi
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" != *"Claude Code Prompts"* ]]; then
         fail "E2E: note attached with --plugin-dir" "no note on commit"
         return
@@ -1703,7 +1703,7 @@ test_e2e_no_plugin_dir_skips_capture() {
         fail "E2E: commit without --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ -z "$note" ]]; then
         pass "E2E: no note without --plugin-dir"
     else
@@ -1724,7 +1724,7 @@ test_e2e_plugin_dir_resumes_capture() {
         return
     fi
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ -n "$note" ]]; then
         fail "E2E: no note without --plugin-dir" "note was attached: ${note:0:100}"
         return
@@ -1736,7 +1736,7 @@ test_e2e_plugin_dir_resumes_capture() {
         fail "E2E: commit with --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Claude Code Prompts"* ]]; then
         pass "E2E: note resumes with --plugin-dir"
     else
@@ -1756,7 +1756,7 @@ test_e2e_clean_repo_no_capture() {
         return
     fi
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ -z "$note" ]]; then
         pass "E2E: no note in clean repo"
     else
@@ -1776,7 +1776,7 @@ test_e2e_add_plugin_dir_resumes_capture() {
         return
     fi
     local note
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ -n "$note" ]]; then
         fail "E2E: no note without --plugin-dir" "note was attached: ${note:0:100}"
         return
@@ -1790,7 +1790,7 @@ test_e2e_add_plugin_dir_resumes_capture() {
         fail "E2E: commit with --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
-    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Claude Code Prompts"* ]]; then
         pass "E2E: note attached with --plugin-dir"
     else
@@ -1818,7 +1818,7 @@ test_e2e_plugin_dir_flag() {
     log=$(git log --oneline -5 2>/dev/null || echo "")
     if [[ "$log" == *"plugdir"* ]]; then
         local note
-        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
             pass "E2E: --plugin-dir loads plugin and attaches note"
         else
@@ -1857,7 +1857,7 @@ test_e2e_multiple_commits_distinct_notes() {
     fi
 
     local note_count
-    note_count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    note_count=$(git notes --ref=claude-prompt-trail list 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$note_count" -ge 2 ]]; then
         pass "E2E: multiple commits each get a note ($note_count notes)"
     else
@@ -1878,15 +1878,15 @@ test_e2e_session_start_configures_git() {
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
-    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+    if [[ "$display_ref" == "refs/notes/claude-prompt-trail" ]]; then
         pass "E2E: SessionStart hook configures notes.displayRef"
     else
         fail "E2E: SessionStart hook configures notes.displayRef" "got '$display_ref'"
     fi
 
     local fetch
-    fetch=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep "claude-prompts" || echo "")
-    if [[ "$fetch" == "+refs/notes/claude-prompts:refs/notes/claude-prompts" ]]; then
+    fetch=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep "claude-prompt-trail" || echo "")
+    if [[ "$fetch" == "+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail" ]]; then
         pass "E2E: SessionStart hook configures fetch refspec"
     else
         fail "E2E: SessionStart hook configures fetch refspec" "got '$fetch'"

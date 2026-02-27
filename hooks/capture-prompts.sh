@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # PostToolUse hook: captures Claude Code prompts and attaches them to git commits
-# as git notes in the refs/notes/claude-prompts namespace.
+# as git notes in the refs/notes/claude-prompt-trail namespace.
 #
 # Receives PostToolUse JSON on stdin. Exits in <1ms for non-commit commands.
 
@@ -89,7 +89,7 @@ def main():
 
     # Attach as git note (--force overwrites if amending)
     result = subprocess.run(
-        ["git", "notes", "--ref=claude-prompts", "add", "-f", "-m", note, commit_hash],
+        ["git", "notes", "--ref=claude-prompt-trail", "add", "-f", "-m", note, commit_hash],
         capture_output=True,
         timeout=10,
     )
@@ -102,7 +102,7 @@ def main():
         capture_output=True,
     ).returncode == 0:
         subprocess.run(
-            ["git", "push", "origin", "refs/notes/claude-prompts"],
+            ["git", "push", "origin", "refs/notes/claude-prompt-trail"],
             capture_output=True,
             timeout=15,
         )
