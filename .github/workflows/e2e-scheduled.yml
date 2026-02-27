@@ -1,0 +1,29 @@
+name: E2E Scheduled (detect Claude Code breaking changes)
+
+on:
+  schedule:
+    # Every 4 hours
+    - cron: "0 */4 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install latest Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Log Claude Code version
+        run: claude --version
+
+      - name: Run full test suite (unit + E2E)
+        run: bash test/run-tests.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

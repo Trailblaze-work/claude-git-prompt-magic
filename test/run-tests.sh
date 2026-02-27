@@ -55,12 +55,20 @@ cleanup_test_repo() {
     fi
 }
 
-# Install hooks from project source into current repo
-install_hooks() {
-    mkdir -p .claude/hooks
-    cp "$HOOKS_DIR/capture-prompts.sh" .claude/hooks/
-    cp "$HOOKS_DIR/setup-notes.sh" .claude/hooks/
-    chmod +x .claude/hooks/*.sh
+# Install plugin structure into current repo
+install_plugin() {
+    mkdir -p .claude-plugin hooks
+    cp "$PROJECT_DIR/.claude-plugin/plugin.json" .claude-plugin/
+    cp "$HOOKS_DIR/capture-prompts.sh" hooks/
+    cp "$HOOKS_DIR/setup-notes.sh" hooks/
+    cp "$HOOKS_DIR/hooks.json" hooks/
+    chmod +x hooks/*.sh
+    mkdir -p .claude
+    cat > .claude/settings.json <<'JSON'
+{
+  "enabledPlugins": ["."]
+}
+JSON
 }
 
 # Create a mock transcript JSONL.
@@ -620,187 +628,54 @@ EOF
 
 
 # ============================================================
-# Install script
+# Plugin structure
 # ============================================================
 
-test_install_creates_settings() {
-    make_test_repo
-    trap cleanup_test_repo RETURN
-
-    mkdir -p .claude/hooks
-    cp "$HOOKS_DIR/capture-prompts.sh" .claude/hooks/
-    cp "$HOOKS_DIR/setup-notes.sh" .claude/hooks/
-    chmod +x .claude/hooks/*.sh
-
-    # Run the settings merge logic from install.sh
-    python3 <<'PYTHON'
-import json, os
-SETTINGS_PATH = ".claude/settings.json"
-HOOKS_CONFIG = {
-    "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/capture-prompts.sh", "timeout": 30}]}],
-    "SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-notes.sh", "timeout": 5}]}],
-}
-settings = {}
-if os.path.isfile(SETTINGS_PATH):
-    with open(SETTINGS_PATH) as f:
-        settings = json.load(f)
-existing_hooks = settings.get("hooks", {})
-for event, new_entries in HOOKS_CONFIG.items():
-    current = existing_hooks.get(event, [])
-    existing_commands = set()
-    for entry in current:
-        for h in entry.get("hooks", []):
-            existing_commands.add(h.get("command", ""))
-    for entry in new_entries:
-        for h in entry.get("hooks", []):
-            if h.get("command", "") not in existing_commands:
-                current.append(entry)
-                break
-    existing_hooks[event] = current
-settings["hooks"] = existing_hooks
-with open(SETTINGS_PATH, "w") as f:
-    json.dump(settings, f, indent=2)
-    f.write("\n")
-PYTHON
-
+test_plugin_json_valid() {
     if python3 -c "
 import json
-with open('.claude/settings.json') as f:
-    s = json.load(f)
-h = s.get('hooks', {})
-assert 'PostToolUse' in h
-assert 'SessionStart' in h
-assert 'capture-prompts' in json.dumps(h['PostToolUse'])
-assert 'setup-notes' in json.dumps(h['SessionStart'])
+with open('$PROJECT_DIR/.claude-plugin/plugin.json') as f:
+    p = json.load(f)
+assert p['name'] == 'prompt-magic', f'name: {p[\"name\"]}'
+assert 'version' in p
+assert 'description' in p
 "; then
-        pass "install creates correct settings.json"
+        pass "plugin.json is valid"
     else
-        fail "install creates correct settings.json" "validation failed"
+        fail "plugin.json is valid" "validation failed"
     fi
 }
 
-test_install_idempotent() {
-    make_test_repo
-    trap cleanup_test_repo RETURN
-
-    mkdir -p .claude/hooks
-    cp "$HOOKS_DIR/capture-prompts.sh" .claude/hooks/
-    cp "$HOOKS_DIR/setup-notes.sh" .claude/hooks/
-    chmod +x .claude/hooks/*.sh
-
-    # Run install merge twice
-    for _ in 1 2; do
-        python3 <<'PYTHON'
-import json, os
-SETTINGS_PATH = ".claude/settings.json"
-HOOKS_CONFIG = {
-    "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/capture-prompts.sh", "timeout": 30}]}],
-    "SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-notes.sh", "timeout": 5}]}],
-}
-settings = {}
-if os.path.isfile(SETTINGS_PATH):
-    with open(SETTINGS_PATH) as f:
-        settings = json.load(f)
-existing_hooks = settings.get("hooks", {})
-for event, new_entries in HOOKS_CONFIG.items():
-    current = existing_hooks.get(event, [])
-    existing_commands = set()
-    for entry in current:
-        for h in entry.get("hooks", []):
-            existing_commands.add(h.get("command", ""))
-    for entry in new_entries:
-        for h in entry.get("hooks", []):
-            if h.get("command", "") not in existing_commands:
-                current.append(entry)
-                break
-    existing_hooks[event] = current
-settings["hooks"] = existing_hooks
-with open(SETTINGS_PATH, "w") as f:
-    json.dump(settings, f, indent=2)
-    f.write("\n")
-PYTHON
-    done
-
-    local count
-    count=$(python3 -c "
+test_hooks_json_valid() {
+    if python3 -c "
 import json
-with open('.claude/settings.json') as f:
-    s = json.load(f)
-print(len(s['hooks']['PostToolUse']))
-")
-    if [[ "$count" -eq 1 ]]; then
-        pass "install is idempotent (no duplicate hooks)"
+with open('$PROJECT_DIR/hooks/hooks.json') as f:
+    h = json.load(f)
+hooks = h['hooks']
+assert 'PostToolUse' in hooks
+assert 'SessionStart' in hooks
+ptu = hooks['PostToolUse']
+assert any('capture-prompts' in json.dumps(e) for e in ptu), 'capture-prompts missing'
+ss = hooks['SessionStart']
+assert any('notes.displayRef' in json.dumps(e) for e in ss), 'SessionStart missing displayRef'
+"; then
+        pass "hooks.json is valid"
     else
-        fail "install is idempotent" "PostToolUse has $count entries"
+        fail "hooks.json is valid" "validation failed"
     fi
 }
 
-test_install_preserves_existing_settings() {
-    make_test_repo
-    trap cleanup_test_repo RETURN
-
-    mkdir -p .claude/hooks
-    cp "$HOOKS_DIR/capture-prompts.sh" .claude/hooks/
-    cp "$HOOKS_DIR/setup-notes.sh" .claude/hooks/
-    chmod +x .claude/hooks/*.sh
-
-    # Pre-existing settings.json with custom content
-    cat > .claude/settings.json <<'JSON'
-{
-  "permissions": {"allow": ["Bash(npm test)"]},
-  "hooks": {
-    "PostToolUse": [
-      {"matcher": "Write", "hooks": [{"type": "command", "command": "echo custom hook"}]}
-    ]
-  }
-}
-JSON
-
-    python3 <<'PYTHON'
-import json, os
-SETTINGS_PATH = ".claude/settings.json"
-HOOKS_CONFIG = {
-    "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/capture-prompts.sh", "timeout": 30}]}],
-    "SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup-notes.sh", "timeout": 5}]}],
-}
-settings = {}
-if os.path.isfile(SETTINGS_PATH):
-    with open(SETTINGS_PATH) as f:
-        settings = json.load(f)
-existing_hooks = settings.get("hooks", {})
-for event, new_entries in HOOKS_CONFIG.items():
-    current = existing_hooks.get(event, [])
-    existing_commands = set()
-    for entry in current:
-        for h in entry.get("hooks", []):
-            existing_commands.add(h.get("command", ""))
-    for entry in new_entries:
-        for h in entry.get("hooks", []):
-            if h.get("command", "") not in existing_commands:
-                current.append(entry)
-                break
-    existing_hooks[event] = current
-settings["hooks"] = existing_hooks
-with open(SETTINGS_PATH, "w") as f:
-    json.dump(settings, f, indent=2)
-    f.write("\n")
-PYTHON
-
+test_settings_enables_plugin() {
     if python3 -c "
 import json
-with open('.claude/settings.json') as f:
+with open('$PROJECT_DIR/.claude/settings.json') as f:
     s = json.load(f)
-# Existing permission preserved
-assert s.get('permissions', {}).get('allow') == ['Bash(npm test)'], 'permissions lost'
-# Existing hook preserved
-ptu = s['hooks']['PostToolUse']
-assert len(ptu) == 2, f'expected 2 PostToolUse entries, got {len(ptu)}'
-assert any('custom hook' in json.dumps(e) for e in ptu), 'custom hook lost'
-assert any('capture-prompts' in json.dumps(e) for e in ptu), 'capture-prompts not added'
+assert '.' in s.get('enabledPlugins', []), 'plugin not enabled'
+assert 'hooks' not in s, 'settings.json should not have hooks key'
 "; then
-        pass "install preserves existing settings and hooks"
+        pass "settings.json enables plugin without inline hooks"
     else
-        fail "install preserves existing settings and hooks" "validation failed"
+        fail "settings.json enables plugin without inline hooks" "validation failed"
     fi
 }
 
@@ -809,20 +684,20 @@ assert any('capture-prompts' in json.dumps(e) for e in ptu), 'capture-prompts no
 # Worktree compatibility
 # ============================================================
 
-test_hooks_present_in_worktree() {
+test_plugin_present_in_worktree() {
     make_test_repo
     trap cleanup_test_repo RETURN
-    install_hooks
+    install_plugin
 
-    git add .claude/
-    git commit -q -m "add hooks"
+    git add .claude-plugin/ hooks/ .claude/
+    git commit -q -m "add plugin"
 
     git worktree add -q "$TEST_DIR/wt" -b test-wt
 
-    if [[ -x "$TEST_DIR/wt/.claude/hooks/capture-prompts.sh" && -x "$TEST_DIR/wt/.claude/hooks/setup-notes.sh" ]]; then
-        pass "hooks present and executable in worktree checkout"
+    if [[ -f "$TEST_DIR/wt/.claude-plugin/plugin.json" && -x "$TEST_DIR/wt/hooks/capture-prompts.sh" && -f "$TEST_DIR/wt/hooks/hooks.json" ]]; then
+        pass "plugin files present in worktree checkout"
     else
-        fail "hooks present and executable in worktree checkout" "missing or not executable"
+        fail "plugin files present in worktree checkout" "missing files"
     fi
 }
 
@@ -1484,32 +1359,78 @@ test_redact_preserves_normal_text() {
 # E2E tests (optional, require ANTHROPIC_API_KEY + claude CLI)
 # ============================================================
 
-test_e2e_basic_commit() {
-    if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-        skip "E2E basic commit" "ANTHROPIC_API_KEY not set"
-        return
-    fi
+# Guard: skip if claude CLI is missing.
+# Usage: require_claude "test name" || return 0
+require_claude() {
     if ! command -v claude >/dev/null 2>&1; then
-        skip "E2E basic commit" "claude CLI not installed"
-        return
+        skip "$1" "claude CLI not installed"
+        return 1
     fi
+    return 0
+}
 
-    make_test_repo
-    trap cleanup_test_repo RETURN
-    install_hooks
-    cp "$PROJECT_DIR/.claude/settings.json" .claude/settings.json
-    git add .claude/
-    git commit -q -m "add hooks"
-    bash .claude/hooks/setup-notes.sh
+# Guard: skip if prerequisites for API-calling E2E tests are missing.
+# Usage: require_e2e "test name" || return 0
+require_e2e() {
+    if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+        skip "$1" "ANTHROPIC_API_KEY not set"
+        return 1
+    fi
+    require_claude "$1"
+}
 
-    local output
-    output=$(claude -p "Create a file called hello.txt containing 'hello from test' and commit it with message 'Add hello.txt'. Do not push." \
+# Helper: set up a test repo with the plugin installed and committed.
+# Caller must call make_test_repo + trap cleanup_test_repo RETURN first.
+setup_e2e_plugin() {
+    install_plugin
+    git add .claude-plugin/ hooks/ .claude/
+    git commit -q -m "add plugin"
+    bash hooks/setup-notes.sh
+}
+
+# Helper: ask Claude to create a file and commit it.
+# Usage: claude_commit <filename> <commit-msg>
+# Returns 0 if commit was created, 1 otherwise. Sets CLAUDE_OUTPUT.
+claude_commit() {
+    local filename="$1"
+    local msg="$2"
+    CLAUDE_OUTPUT=$(claude -p \
+        "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push." \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
         2>&1) || true
 
     local log
     log=$(git log --oneline -5 2>/dev/null || echo "")
-    if [[ "$log" == *"hello"* ]]; then
+    [[ "$log" == *"$msg"* ]]
+}
+
+test_e2e_plugin_validate() {
+    require_claude "E2E plugin validate" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    install_plugin
+    git add .claude-plugin/ hooks/ .claude/
+    git commit -q -m "add plugin"
+
+    local output
+    output=$(claude plugin validate . 2>&1)
+    local rc=$?
+    if [[ $rc -eq 0 && "$output" == *"Validation passed"* ]]; then
+        pass "E2E: plugin validate passes"
+    else
+        fail "E2E: plugin validate passes" "rc=$rc output: ${output:0:200}"
+    fi
+}
+
+test_e2e_basic_commit() {
+    require_e2e "E2E basic commit" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    if claude_commit "hello.txt" "Add hello.txt"; then
         local note
         note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
@@ -1518,40 +1439,45 @@ test_e2e_basic_commit() {
             fail "E2E: commit with note attached" "commit exists but no note"
         fi
     else
-        fail "E2E: Claude created commit" "no matching commit. Output: ${output:0:200}"
+        fail "E2E: Claude created commit" "no matching commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    fi
+}
+
+test_e2e_note_has_v2_fields() {
+    require_e2e "E2E note v2 fields" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    if claude_commit "fields.txt" "Add fields.txt"; then
+        local note
+        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        local ok=true
+        [[ "$note" == *"format:v2"* ]] || { fail "E2E: note has v2 marker" "missing format:v2"; ok=false; }
+        [[ "$note" == *"**Session**:"* ]] || { fail "E2E: note has Session field" "missing Session"; ok=false; }
+        [[ "$note" == *"**Captured**:"* ]] || { fail "E2E: note has Captured field" "missing Captured"; ok=false; }
+        [[ "$note" == *"### Prompts"* ]] || { fail "E2E: note has Prompts section" "missing Prompts"; ok=false; }
+        if $ok; then
+            pass "E2E: note has v2 format fields"
+        fi
+    else
+        fail "E2E: Claude created commit for v2 check" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
     fi
 }
 
 test_e2e_worktree_commit() {
-    if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-        skip "E2E worktree commit" "ANTHROPIC_API_KEY not set"
-        return
-    fi
-    if ! command -v claude >/dev/null 2>&1; then
-        skip "E2E worktree commit" "claude CLI not installed"
-        return
-    fi
+    require_e2e "E2E worktree commit" || return 0
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    install_hooks
-    cp "$PROJECT_DIR/.claude/settings.json" .claude/settings.json
-    git add .claude/
-    git commit -q -m "add hooks"
-    bash .claude/hooks/setup-notes.sh
+    setup_e2e_plugin
 
     mkdir -p .claude/worktrees
     git worktree add -q .claude/worktrees/test-task -b worktree-test
     cd .claude/worktrees/test-task
 
-    local output
-    output=$(claude -p "Create a file called wt.txt containing 'worktree' and commit with message 'Add wt.txt'. Do not push." \
-        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
-        2>&1) || true
-
-    local log
-    log=$(git log --oneline -5 2>/dev/null || echo "")
-    if [[ "$log" == *"wt"* ]]; then
+    if claude_commit "wt.txt" "Add wt.txt"; then
         local note
         note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
@@ -1568,7 +1494,253 @@ test_e2e_worktree_commit() {
             fail "E2E: worktree commit with note" "commit exists but no note"
         fi
     else
-        fail "E2E: worktree commit created" "no matching commit. Output: ${output:0:200}"
+        fail "E2E: worktree commit created" "no matching commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    fi
+}
+
+test_e2e_plugin_disable_stops_capture() {
+    require_e2e "E2E disable stops capture" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    # First commit with plugin enabled — should get a note
+    if ! claude_commit "before-disable.txt" "Add before-disable"; then
+        fail "E2E: commit before disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" != *"Claude Code Prompts"* ]]; then
+        fail "E2E: note attached before disable" "no note on pre-disable commit"
+        return
+    fi
+    pass "E2E: note attached before disable"
+    local note_count_before
+    note_count_before=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+
+    # Disable plugin by removing from enabledPlugins
+    echo '{}' > .claude/settings.json
+    git add .claude/settings.json
+    git commit -q -m "disable plugin"
+
+    # Second commit with plugin disabled — should NOT get a note
+    if ! claude_commit "after-disable.txt" "Add after-disable"; then
+        fail "E2E: commit after disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ -z "$note" ]]; then
+        pass "E2E: no note after disable"
+    else
+        fail "E2E: no note after disable" "note was attached: ${note:0:100}"
+    fi
+}
+
+test_e2e_plugin_reenable_resumes_capture() {
+    require_e2e "E2E re-enable resumes capture" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    # Disable
+    echo '{}' > .claude/settings.json
+    git add .claude/settings.json
+    git commit -q -m "disable plugin"
+
+    # Commit while disabled — no note expected
+    if ! claude_commit "while-disabled.txt" "Add while-disabled"; then
+        fail "E2E: commit while disabled" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ -n "$note" ]]; then
+        fail "E2E: no note while disabled" "note was attached: ${note:0:100}"
+        return
+    fi
+    pass "E2E: no note while disabled"
+
+    # Re-enable
+    echo '{"enabledPlugins":["."]}' > .claude/settings.json
+    git add .claude/settings.json
+    git commit -q -m "re-enable plugin"
+
+    # Commit after re-enable — note expected
+    if ! claude_commit "after-reenable.txt" "Add after-reenable"; then
+        fail "E2E: commit after re-enable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"Claude Code Prompts"* ]]; then
+        pass "E2E: note resumes after re-enable"
+    else
+        fail "E2E: note resumes after re-enable" "no note after re-enable"
+    fi
+}
+
+test_e2e_plugin_uninstall_stops_capture() {
+    require_e2e "E2E uninstall stops capture" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    # Uninstall: remove plugin files and settings reference
+    rm -rf .claude-plugin hooks/hooks.json
+    echo '{}' > .claude/settings.json
+    git add -A
+    git commit -q -m "uninstall plugin"
+
+    if ! claude_commit "after-uninstall.txt" "Add after-uninstall"; then
+        fail "E2E: commit after uninstall" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ -z "$note" ]]; then
+        pass "E2E: no note after uninstall"
+    else
+        fail "E2E: no note after uninstall" "note was attached: ${note:0:100}"
+    fi
+}
+
+test_e2e_plugin_reinstall_resumes() {
+    require_e2e "E2E reinstall resumes capture" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Start with no plugin
+    git commit -q --allow-empty -m "baseline"
+
+    if ! claude_commit "no-plugin.txt" "Add no-plugin"; then
+        fail "E2E: commit without plugin" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ -n "$note" ]]; then
+        fail "E2E: no note without plugin" "note was attached: ${note:0:100}"
+        return
+    fi
+    pass "E2E: no note without plugin"
+
+    # Now install the plugin
+    install_plugin
+    git add .claude-plugin/ hooks/ .claude/
+    git commit -q -m "install plugin"
+    bash hooks/setup-notes.sh
+
+    if ! claude_commit "with-plugin.txt" "Add with-plugin"; then
+        fail "E2E: commit after install" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"Claude Code Prompts"* ]]; then
+        pass "E2E: note attached after install"
+    else
+        fail "E2E: note attached after install" "no note"
+    fi
+}
+
+test_e2e_plugin_dir_flag() {
+    require_e2e "E2E --plugin-dir flag" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Don't install plugin into the repo — load it via --plugin-dir instead
+    bash "$HOOKS_DIR/setup-notes.sh"
+
+    CLAUDE_OUTPUT=$(claude -p \
+        "Create a file called plugdir.txt containing 'plugin-dir test' and commit it with message 'Add plugdir.txt'. Do not push." \
+        --plugin-dir "$PROJECT_DIR" \
+        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+        2>&1) || true
+
+    local log
+    log=$(git log --oneline -5 2>/dev/null || echo "")
+    if [[ "$log" == *"plugdir"* ]]; then
+        local note
+        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        if [[ "$note" == *"Claude Code Prompts"* ]]; then
+            pass "E2E: --plugin-dir loads plugin and attaches note"
+        else
+            fail "E2E: --plugin-dir attaches note" "commit exists but no note"
+        fi
+    else
+        fail "E2E: --plugin-dir commit" "no matching commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    fi
+}
+
+test_e2e_multiple_commits_distinct_notes() {
+    require_e2e "E2E multiple commits distinct notes" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    setup_e2e_plugin
+
+    # Ask Claude to create two files and make two separate commits
+    CLAUDE_OUTPUT=$(claude -p \
+        "Do these two steps in order: (1) Create file first.txt containing 'first' and commit with message 'Add first.txt'. (2) Create file second.txt containing 'second' and commit with message 'Add second.txt'. Do not push." \
+        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+        2>&1) || true
+
+    local log
+    log=$(git log --oneline -10 2>/dev/null || echo "")
+
+    if [[ "$log" != *"first"* ]]; then
+        fail "E2E: first commit created" "no first commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+    if [[ "$log" != *"second"* ]]; then
+        fail "E2E: second commit created" "no second commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        return
+    fi
+
+    local note_count
+    note_count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$note_count" -ge 2 ]]; then
+        pass "E2E: multiple commits each get a note ($note_count notes)"
+    else
+        fail "E2E: multiple commits each get a note" "only $note_count note(s)"
+    fi
+}
+
+test_e2e_session_start_configures_git() {
+    require_e2e "E2E SessionStart configures git" || return 0
+
+    make_test_repo
+    trap cleanup_test_repo RETURN
+    install_plugin
+    git add .claude-plugin/ hooks/ .claude/
+    git commit -q -m "add plugin"
+    git remote add origin "https://example.com/test.git"
+
+    # Don't run setup-notes.sh manually — let the SessionStart hook do it
+    # Clear any existing config
+    git config --local --unset notes.displayRef 2>/dev/null || true
+
+    # Run a trivial Claude session that triggers SessionStart
+    claude -p "Say hello" --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
+
+    local display_ref
+    display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
+    if [[ "$display_ref" == "refs/notes/claude-prompts" ]]; then
+        pass "E2E: SessionStart hook configures notes.displayRef"
+    else
+        fail "E2E: SessionStart hook configures notes.displayRef" "got '$display_ref'"
+    fi
+
+    local fetch
+    fetch=$(git config --local --get-all remote.origin.fetch 2>/dev/null | grep "claude-prompts" || echo "")
+    if [[ "$fetch" == "+refs/notes/claude-prompts:refs/notes/claude-prompts" ]]; then
+        pass "E2E: SessionStart hook configures fetch refspec"
+    else
+        fail "E2E: SessionStart hook configures fetch refspec" "got '$fetch'"
     fi
 }
 
@@ -1603,13 +1775,13 @@ main() {
     test_parallel_sessions_no_conflict
     test_parallel_notes_total_count
 
-    section "install script"
-    test_install_creates_settings
-    test_install_idempotent
-    test_install_preserves_existing_settings
+    section "plugin structure"
+    test_plugin_json_valid
+    test_hooks_json_valid
+    test_settings_enables_plugin
 
     section "worktree compatibility"
-    test_hooks_present_in_worktree
+    test_plugin_present_in_worktree
     test_setup_notes_in_worktree
     test_capture_in_worktree
     test_worktree_note_visible_from_main
@@ -1640,8 +1812,17 @@ main() {
     test_redact_preserves_normal_text
 
     section "E2E with Claude (optional)"
+    test_e2e_plugin_validate
     test_e2e_basic_commit
+    test_e2e_note_has_v2_fields
     test_e2e_worktree_commit
+    test_e2e_plugin_disable_stops_capture
+    test_e2e_plugin_reenable_resumes_capture
+    test_e2e_plugin_uninstall_stops_capture
+    test_e2e_plugin_reinstall_resumes
+    test_e2e_plugin_dir_flag
+    test_e2e_multiple_commits_distinct_notes
+    test_e2e_session_start_configures_git
 
     # Summary
     printf "\n\033[1mResults: %d passed, %d failed, %d skipped\033[0m\n" "$PASSED" "$FAILED" "$SKIPPED"

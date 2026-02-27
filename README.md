@@ -8,21 +8,22 @@ The prompts that shape AI-generated code are as important as the code itself. Wh
 
 ## Install
 
-Run this inside any git repo:
-
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Trailblaze-work/claude-git-prompt-magic/main/install.sh)
+claude plugin install github:Trailblaze-work/claude-git-prompt-magic
 ```
 
-This creates `.claude/hooks/` with two shell scripts and adds hook configuration to `.claude/settings.json`.
+To install for your whole team (commits the plugin reference to `.claude/settings.json`):
 
-### Making it automatic for your team
+```bash
+claude plugin install github:Trailblaze-work/claude-git-prompt-magic --scope project
+```
 
-If you **commit the `.claude/` directory**, every developer who clones the repo and uses Claude Code gets prompt capture baked in, with zero setup on their end. This is the recommended approach.
+Toggle the plugin on or off:
 
-`.claude/settings.json` is Claude Code's [shared project config](https://docs.anthropic.com/en/docs/claude-code/settings). Committing it also shares any other project-level Claude Code settings (like enabled plugins or allowed tools) with the team, which is generally the point of that file. Personal overrides go in `.claude/settings.local.json`, which the installer adds to `.gitignore`.
-
-If you'd rather **not commit `.claude/`**, each developer runs the install one-liner above individually. Same result, just not automatic.
+```bash
+claude plugin disable prompt-magic
+claude plugin enable prompt-magic
+```
 
 ## How it works
 
@@ -154,17 +155,19 @@ Notes use a structured markdown format designed to be readable in terminals, ren
 ## Uninstall
 
 ```bash
-# Remove hooks and settings
-rm .claude/hooks/capture-prompts.sh .claude/hooks/setup-notes.sh
-# Edit .claude/settings.json to remove the "hooks" key
-# Remove local git config
+claude plugin uninstall prompt-magic
+```
+
+To also clean up local git config:
+
+```bash
 git config --local --unset notes.displayRef
 git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompts:refs/notes/claude-prompts"
 ```
 
 ## Worktree support
 
-Works out of the box with `claude --worktree` and manual `git worktree` setups. Hooks are tracked in git so they're present in every worktree checkout, git notes are stored in the shared `.git` directory so they're visible across all worktrees, and git config is shared automatically. The only difference: `.claude/settings.local.json` (permission allowlists) is gitignored, so you'll get permission prompts in new worktree sessions.
+Works out of the box with `claude --worktree` and manual `git worktree` setups. The plugin hooks are loaded by Claude Code automatically, git notes are stored in the shared `.git` directory so they're visible across all worktrees, and git config is shared automatically.
 
 ## Testing
 
