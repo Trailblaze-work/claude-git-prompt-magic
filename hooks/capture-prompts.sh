@@ -60,11 +60,12 @@ def main():
     if "git commit" not in command:
         return
 
-    # Check tool_response for successful commit pattern: [branch hash]
+    # Check tool_response for successful commit pattern:
+    #   [branch hash]  /  [detached HEAD hash]  /  [branch (root-commit) hash]
     response = hook_data.get("tool_response", "")
     if isinstance(response, dict):
         response = json.dumps(response)
-    match = re.search(r"\[[\w/.+-]+ ([a-f0-9]{7,})\]", str(response))
+    match = re.search(r"\[.+? ([a-f0-9]{7,})\]", str(response))
     if not match:
         return
     commit_hash = match.group(1)
@@ -95,12 +96,16 @@ def main():
     if result.returncode != 0:
         return
 
-    # Push the note to remote (best-effort, silent failure if offline)
-    subprocess.run(
-        ["git", "push", "origin", "refs/notes/claude-prompts"],
+    # Push the note to remote (best-effort, only if origin exists)
+    if subprocess.run(
+        ["git", "remote", "get-url", "origin"],
         capture_output=True,
-        timeout=15,
-    )
+    ).returncode == 0:
+        subprocess.run(
+            ["git", "push", "origin", "refs/notes/claude-prompts"],
+            capture_output=True,
+            timeout=15,
+        )
 
 
 def extract_session_data(transcript_path):
@@ -222,15 +227,13 @@ def extract_session_data(transcript_path):
                 client_version = record.get("version", "")
             if not git_branch:
                 git_branch = record.get("gitBranch", "")
-            # Always update permission_mode to capture the last one
+            # Iterating backward: first value seen = chronologically last
             raw_mode = record.get("permissionMode", "")
-            if raw_mode:
+            if raw_mode and not permission_mode:
                 permission_mode = raw_mode
 
             text = extract_text(record)
             if text:
-                if len(text) > 2000:
-                    text = text[:2000] + "... [truncated]"
                 mode = extract_mode(record)
                 if mode:
                     text = f"[{mode}] {text}"
@@ -335,10 +338,13 @@ def extract_text(record):
     if isinstance(msg_content, list):
         parts = []
         for part in msg_content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                t = part.get("text", "").strip()
-                if t:
-                    parts.append(t)
+            if isinstance(part, dict):
+                if part.get("type") == "text":
+                    t = part.get("text", "").strip()
+                    if t:
+                        parts.append(t)
+                elif part.get("type") == "image":
+                    parts.append("[image]")
         return "\n".join(parts).strip()
     return ""
 
