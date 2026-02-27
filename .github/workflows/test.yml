@@ -33,6 +33,11 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
       - name: Install Claude Code
         if: env.ANTHROPIC_API_KEY != ''
         run: npm install -g @anthropic-ai/claude-code

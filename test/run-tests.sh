@@ -60,6 +60,7 @@ install_plugin() {
     mkdir -p .claude-plugin hooks
     cp "$PROJECT_DIR/.claude-plugin/plugin.json" .claude-plugin/
     cp "$HOOKS_DIR/capture-prompts.sh" hooks/
+    cp "$HOOKS_DIR/setup-notes.sh" hooks/
     cp "$HOOKS_DIR/hooks.json" hooks/
     chmod +x hooks/*.sh
     mkdir -p .claude
@@ -1514,123 +1515,123 @@ test_e2e_worktree_commit() {
     fi
 }
 
-test_e2e_plugin_disable_stops_capture() {
-    require_e2e "E2E disable stops capture" || return 0
+test_e2e_no_plugin_dir_skips_capture() {
+    require_e2e "E2E no --plugin-dir skips capture" || return 0
 
     make_test_repo
     trap cleanup_test_repo RETURN
     bash "$HOOKS_DIR/setup-notes.sh"
 
     # First commit with plugin loaded — should get a note
-    if ! claude_commit "before-disable.txt" "Add before-disable" --plugin-dir "$PROJECT_DIR"; then
-        fail "E2E: commit before disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    if ! claude_commit "with-plugin.txt" "Add with-plugin" --plugin-dir "$PROJECT_DIR"; then
+        fail "E2E: commit with --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     local note
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ "$note" != *"Claude Code Prompts"* ]]; then
-        fail "E2E: note attached before disable" "no note on pre-disable commit"
+        fail "E2E: note attached with --plugin-dir" "no note on commit"
         return
     fi
-    pass "E2E: note attached before disable"
+    pass "E2E: note attached with --plugin-dir"
 
-    # Second commit WITHOUT plugin — should NOT get a note
-    if ! claude_commit "after-disable.txt" "Add after-disable"; then
-        fail "E2E: commit after disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    # Second commit WITHOUT --plugin-dir — should NOT get a note
+    if ! claude_commit "no-plugin.txt" "Add no-plugin"; then
+        fail "E2E: commit without --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ -z "$note" ]]; then
-        pass "E2E: no note after disable"
+        pass "E2E: no note without --plugin-dir"
     else
-        fail "E2E: no note after disable" "note was attached: ${note:0:100}"
+        fail "E2E: no note without --plugin-dir" "note was attached: ${note:0:100}"
     fi
 }
 
-test_e2e_plugin_reenable_resumes_capture() {
-    require_e2e "E2E re-enable resumes capture" || return 0
+test_e2e_plugin_dir_resumes_capture() {
+    require_e2e "E2E --plugin-dir resumes capture" || return 0
 
     make_test_repo
     trap cleanup_test_repo RETURN
     bash "$HOOKS_DIR/setup-notes.sh"
 
-    # Commit without plugin — no note expected
-    if ! claude_commit "while-disabled.txt" "Add while-disabled"; then
-        fail "E2E: commit while disabled" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    # Commit without --plugin-dir — no note expected
+    if ! claude_commit "no-plugin.txt" "Add no-plugin"; then
+        fail "E2E: commit without --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     local note
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ -n "$note" ]]; then
-        fail "E2E: no note while disabled" "note was attached: ${note:0:100}"
+        fail "E2E: no note without --plugin-dir" "note was attached: ${note:0:100}"
         return
     fi
-    pass "E2E: no note while disabled"
+    pass "E2E: no note without --plugin-dir"
 
-    # Commit with plugin re-enabled — note expected
-    if ! claude_commit "after-reenable.txt" "Add after-reenable" --plugin-dir "$PROJECT_DIR"; then
-        fail "E2E: commit after re-enable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    # Commit with --plugin-dir — note expected
+    if ! claude_commit "with-plugin.txt" "Add with-plugin" --plugin-dir "$PROJECT_DIR"; then
+        fail "E2E: commit with --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Claude Code Prompts"* ]]; then
-        pass "E2E: note resumes after re-enable"
+        pass "E2E: note resumes with --plugin-dir"
     else
-        fail "E2E: note resumes after re-enable" "no note after re-enable"
+        fail "E2E: note resumes with --plugin-dir" "no note with --plugin-dir"
     fi
 }
 
-test_e2e_plugin_uninstall_stops_capture() {
-    require_e2e "E2E uninstall stops capture" || return 0
+test_e2e_clean_repo_no_capture() {
+    require_e2e "E2E clean repo no capture" || return 0
 
     make_test_repo
     trap cleanup_test_repo RETURN
 
-    # Commit without plugin at all — no note expected
-    if ! claude_commit "after-uninstall.txt" "Add after-uninstall"; then
-        fail "E2E: commit after uninstall" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+    # Commit in clean repo (no plugin) — no note expected
+    if ! claude_commit "clean-repo.txt" "Add clean-repo"; then
+        fail "E2E: commit in clean repo" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     local note
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ -z "$note" ]]; then
-        pass "E2E: no note after uninstall"
+        pass "E2E: no note in clean repo"
     else
-        fail "E2E: no note after uninstall" "note was attached: ${note:0:100}"
+        fail "E2E: no note in clean repo" "note was attached: ${note:0:100}"
     fi
 }
 
-test_e2e_plugin_reinstall_resumes() {
-    require_e2e "E2E reinstall resumes capture" || return 0
+test_e2e_add_plugin_dir_resumes_capture() {
+    require_e2e "E2E add --plugin-dir resumes capture" || return 0
 
     make_test_repo
     trap cleanup_test_repo RETURN
 
-    # Start with no plugin
+    # Start without --plugin-dir
     if ! claude_commit "no-plugin.txt" "Add no-plugin"; then
-        fail "E2E: commit without plugin" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        fail "E2E: commit without --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     local note
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ -n "$note" ]]; then
-        fail "E2E: no note without plugin" "note was attached: ${note:0:100}"
+        fail "E2E: no note without --plugin-dir" "note was attached: ${note:0:100}"
         return
     fi
-    pass "E2E: no note without plugin"
+    pass "E2E: no note without --plugin-dir"
 
-    # Now load the plugin
+    # Now add --plugin-dir
     bash "$HOOKS_DIR/setup-notes.sh"
 
     if ! claude_commit "with-plugin.txt" "Add with-plugin" --plugin-dir "$PROJECT_DIR"; then
-        fail "E2E: commit after install" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        fail "E2E: commit with --plugin-dir" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"Claude Code Prompts"* ]]; then
-        pass "E2E: note attached after install"
+        pass "E2E: note attached with --plugin-dir"
     else
-        fail "E2E: note attached after install" "no note"
+        fail "E2E: note attached with --plugin-dir" "no note"
     fi
 }
 
@@ -1710,7 +1711,7 @@ test_e2e_session_start_configures_git() {
 
     # Don't run setup-notes.sh manually — let the SessionStart hook do it
     # Run a trivial Claude session that triggers SessionStart
-    claude -p "Say hello" --plugin-dir "$PROJECT_DIR" --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
+    claude -p "Say hello" --plugin-dir "$PROJECT_DIR" --permission-mode acceptEdits --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
@@ -1801,10 +1802,10 @@ main() {
     test_e2e_basic_commit
     test_e2e_note_has_v2_fields
     test_e2e_worktree_commit
-    test_e2e_plugin_disable_stops_capture
-    test_e2e_plugin_reenable_resumes_capture
-    test_e2e_plugin_uninstall_stops_capture
-    test_e2e_plugin_reinstall_resumes
+    test_e2e_no_plugin_dir_skips_capture
+    test_e2e_plugin_dir_resumes_capture
+    test_e2e_clean_repo_no_capture
+    test_e2e_add_plugin_dir_resumes_capture
     test_e2e_plugin_dir_flag
     test_e2e_multiple_commits_distinct_notes
     test_e2e_session_start_configures_git

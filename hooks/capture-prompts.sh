@@ -95,12 +95,16 @@ def main():
     if result.returncode != 0:
         return
 
-    # Push the note to remote (best-effort, silent failure if offline)
-    subprocess.run(
-        ["git", "push", "origin", "refs/notes/claude-prompts"],
+    # Push the note to remote (best-effort, only if origin exists)
+    if subprocess.run(
+        ["git", "remote", "get-url", "origin"],
         capture_output=True,
-        timeout=15,
-    )
+    ).returncode == 0:
+        subprocess.run(
+            ["git", "push", "origin", "refs/notes/claude-prompts"],
+            capture_output=True,
+            timeout=15,
+        )
 
 
 def extract_session_data(transcript_path):
