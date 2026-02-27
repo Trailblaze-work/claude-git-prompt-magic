@@ -234,8 +234,6 @@ def extract_session_data(transcript_path):
 
             text = extract_text(record)
             if text:
-                if len(text) > 2000:
-                    text = text[:2000] + "... [truncated]"
                 mode = extract_mode(record)
                 if mode:
                     text = f"[{mode}] {text}"
@@ -340,10 +338,13 @@ def extract_text(record):
     if isinstance(msg_content, list):
         parts = []
         for part in msg_content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                t = part.get("text", "").strip()
-                if t:
-                    parts.append(t)
+            if isinstance(part, dict):
+                if part.get("type") == "text":
+                    t = part.get("text", "").strip()
+                    if t:
+                        parts.append(t)
+                elif part.get("type") == "image":
+                    parts.append("[image]")
         return "\n".join(parts).strip()
     return ""
 

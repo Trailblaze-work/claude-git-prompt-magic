@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Test suite for claude-git-prompt-magic
-# Tests hook functionality, install script, worktree compatibility,
+# Tests hook functionality, plugin structure, worktree compatibility,
 # multi-commit sessions, parallel sessions, and edge cases.
 # All tests run in isolated /tmp directories — no side effects on the real repo.
 
@@ -1335,7 +1335,7 @@ test_capture_malformed_json() {
     fi
 }
 
-test_capture_long_prompt_truncation() {
+test_capture_long_prompt_verbatim() {
     make_test_repo
     trap cleanup_test_repo RETURN
 
@@ -1345,10 +1345,10 @@ test_capture_long_prompt_truncation() {
     local hash
     hash=$(git rev-parse --short HEAD)
 
-    # Create transcript with a very long prompt (3000 chars)
+    # Create transcript with a very long prompt (3000+ chars)
     local transcript="$TEST_DIR/transcript.jsonl"
     local long_prompt
-    long_prompt=$(python3 -c "print('A' * 3000)")
+    long_prompt=$(python3 -c "print(' '.join('Fix the bug in line ' + str(i) + ' of the file.' for i in range(200)))" | head -c 3000)
     # Write manually to handle the long string
     printf '{"type":"user","message":{"content":"%s"}}\n' "$long_prompt" > "$transcript"
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$transcript"
@@ -1358,14 +1358,37 @@ test_capture_long_prompt_truncation() {
     local note
     note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
     if [[ "$note" == *"[truncated]"* ]]; then
-        pass "long prompts are truncated"
+        fail "long prompts are captured verbatim" "note was truncated"
+    elif [[ "$note" == *"Fix the bug in line 0"* ]] && [[ ${#note} -gt 3000 ]]; then
+        pass "long prompts are captured verbatim"
     else
-        # Check if note exists at all (might not truncate if feature not present)
-        if [[ "$note" == *"AAAA"* ]]; then
-            pass "long prompts are captured (truncation may vary)"
-        else
-            fail "long prompts are truncated" "note length: ${#note}"
-        fi
+        fail "long prompts are captured verbatim" "note length: ${#note}"
+    fi
+}
+
+test_capture_image_placeholder() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt
+    git add x.txt
+    git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    # User message with mixed text and image content
+    printf '{"type":"user","message":{"content":[{"type":"text","text":"Look at this screenshot"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBOR..."}}]}}\n' > "$transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$transcript"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"Look at this screenshot"* ]] && [[ "$note" == *"[image]"* ]]; then
+        pass "image content replaced with [image] placeholder"
+    else
+        fail "image content replaced with [image] placeholder" "note: $note"
     fi
 }
 
@@ -1843,7 +1866,7 @@ test_e2e_session_start_configures_git() {
 
     # Don't run setup-notes.sh manually — let the SessionStart hook do it
     # Run a trivial Claude session that triggers SessionStart
-    claude -p "Say hello" --plugin-dir "$PROJECT_DIR" --permission-mode acceptEdits --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
+    claude -p "Say hello" --plugin-dir "$PROJECT_DIR" --permission-mode acceptEdits --allowedTools 'Bash(echo *)' >/dev/null 2>&1 || true
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
@@ -1924,7 +1947,8 @@ main() {
     test_capture_no_transcript
     test_capture_empty_transcript
     test_capture_malformed_json
-    test_capture_long_prompt_truncation
+    test_capture_long_prompt_verbatim
+    test_capture_image_placeholder
 
     section "secret redaction"
     test_redact_anthropic_key
