@@ -1267,6 +1267,142 @@ test_v2_backward_compat() {
 
 
 # ============================================================
+# Plan-to-build recovery
+# ============================================================
+
+test_plan_to_build_recovers_parent_prompts() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local parent_id="parent-sess-001"
+    local build_id="build-sess-001"
+    local parent_transcript="$TEST_DIR/$parent_id.jsonl"
+    local build_transcript="$TEST_DIR/$build_id.jsonl"
+
+    # Parent session: user's original prompts during planning
+    printf '{"type":"user","sessionId":"%s","message":{"content":"Add dark mode to the app"}}\n' "$parent_id" > "$parent_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}\n' >> "$parent_transcript"
+    printf '{"type":"user","sessionId":"%s","message":{"content":"Make it toggle with a button in the header"}}\n' "$parent_id" >> "$parent_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{}}]}}\n' >> "$parent_transcript"
+
+    # Build session: interrupt record, plan record, build-phase prompt, commit
+    printf '{"type":"user","sessionId":"%s","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}\n' "$parent_id" > "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","planContent":"# Dark Mode Plan","message":{"content":"Implement the following plan:\\n\\n# Dark Mode Plan"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{}}]}}\n' >> "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","message":{"content":"ok, please commit"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$build_transcript"
+
+    make_hook_input "$hash" "$build_transcript" "$build_id" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # Parent prompts should be recovered
+    [[ "$note" == *"Add dark mode to the app"* ]] || ok=false
+    [[ "$note" == *"Make it toggle with a button in the header"* ]] || ok=false
+    # Build-phase prompt should be included
+    [[ "$note" == *"ok, please commit"* ]] || ok=false
+    # Plan text should NOT appear as a prompt
+    [[ "$note" != *"Implement the following plan"* ]] || ok=false
+    # Parent session traceability comment
+    [[ "$note" == *"$parent_id"* ]] || ok=false
+
+    if $ok; then
+        pass "plan-to-build recovers parent prompts"
+    else
+        fail "plan-to-build recovers parent prompts" "note: $note"
+    fi
+}
+
+test_plan_to_build_no_parent_file() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local parent_id="missing-parent-001"
+    local build_id="build-sess-002"
+    local build_transcript="$TEST_DIR/$build_id.jsonl"
+
+    # Build session with reference to non-existent parent file
+    printf '{"type":"user","sessionId":"%s","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}\n' "$parent_id" > "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","planContent":"# Some Plan","message":{"content":"Implement the following plan:\\n\\n# Some Plan"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","message":{"content":"ok, commit this"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$build_transcript"
+
+    make_hook_input "$hash" "$build_transcript" "$build_id" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # Should still capture build-phase prompts (graceful fallback)
+    [[ "$note" == *"ok, commit this"* ]] || ok=false
+    # Note should still be created
+    [[ "$note" == *"Claude Code Prompts"* ]] || ok=false
+
+    if $ok; then
+        pass "plan-to-build gracefully handles missing parent file"
+    else
+        fail "plan-to-build gracefully handles missing parent file" "note: $note"
+    fi
+}
+
+test_plan_to_build_chained() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local grandparent_id="grandparent-001"
+    local parent_id="parent-sess-003"
+    local build_id="build-sess-003"
+    local grandparent_transcript="$TEST_DIR/$grandparent_id.jsonl"
+    local parent_transcript="$TEST_DIR/$parent_id.jsonl"
+    local build_transcript="$TEST_DIR/$build_id.jsonl"
+
+    # Grandparent session
+    printf '{"type":"user","sessionId":"%s","message":{"content":"This is the grandparent prompt"}}\n' "$grandparent_id" > "$grandparent_transcript"
+
+    # Parent session (itself a build from grandparent)
+    printf '{"type":"user","sessionId":"%s","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}\n' "$grandparent_id" > "$parent_transcript"
+    printf '{"type":"user","sessionId":"%s","planContent":"# First Plan","message":{"content":"Implement the following plan:\\n\\n# First Plan"}}\n' "$parent_id" >> "$parent_transcript"
+    printf '{"type":"user","sessionId":"%s","message":{"content":"Add dark mode to the app"}}\n' "$parent_id" >> "$parent_transcript"
+
+    # Build session (build from parent)
+    printf '{"type":"user","sessionId":"%s","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}\n' "$parent_id" > "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","planContent":"# Second Plan","message":{"content":"Implement the following plan:\\n\\n# Second Plan"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"user","sessionId":"%s","message":{"content":"ok, commit"}}\n' "$build_id" >> "$build_transcript"
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m test"}}]}}\n' >> "$build_transcript"
+
+    make_hook_input "$hash" "$build_transcript" "$build_id" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # Parent prompts recovered (one level back)
+    [[ "$note" == *"Add dark mode to the app"* ]] || ok=false
+    # Grandparent prompt NOT recovered (only one level)
+    [[ "$note" != *"grandparent prompt"* ]] || ok=false
+    # Build-phase prompt included
+    [[ "$note" == *"ok, commit"* ]] || ok=false
+
+    if $ok; then
+        pass "plan-to-build traces back only one level"
+    else
+        fail "plan-to-build traces back only one level" "note: $note"
+    fi
+}
+
+
+# ============================================================
 # Edge cases
 # ============================================================
 
@@ -1950,6 +2086,11 @@ main() {
     test_multi_model_session
     test_mcp_server_detection
     test_v2_backward_compat
+
+    section "plan-to-build recovery"
+    test_plan_to_build_recovers_parent_prompts
+    test_plan_to_build_no_parent_file
+    test_plan_to_build_chained
 
     section "edge cases"
     test_capture_no_transcript

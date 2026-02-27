@@ -79,7 +79,7 @@ def main():
         return
 
     # Extract session data since the previous git commit
-    data = extract_session_data(transcript_path)
+    data = extract_session_data(transcript_path, session_id)
     if not data["prompts"]:
         return
 
@@ -108,13 +108,16 @@ def main():
         )
 
 
-def extract_session_data(transcript_path):
+def extract_session_data(transcript_path, session_id):
     """Walk backward through the transcript collecting prompts and metadata.
 
     Returns a dict with prompts, models, token usage, tool counts, etc.
     Stops at the previous git commit boundary (or session start).
     Skips the current commit's tool_use record so we capture the
     prompts that led *to* this commit, not past it.
+
+    For plan-to-build sessions, traces back to the parent session
+    to recover the original user prompts.
     """
     records = []
     with open(transcript_path, "r") as f:
@@ -165,7 +168,10 @@ def extract_session_data(transcript_path):
             "mcp_servers": sorted(mcp_servers_set),
         }
 
+    stop_at_prev_commit = False
     for record in reversed(records):
+        if stop_at_prev_commit:
+            break
         rec_type = record.get("type", "")
 
         # Detect git-commit tool_use inside assistant messages
@@ -187,7 +193,8 @@ def extract_session_data(transcript_path):
                             break
                         else:
                             if prompts:
-                                return _finalize()
+                                stop_at_prev_commit = True
+                                break
                             # No prompts between commits, keep looking
 
             # Gather assistant metadata (only within our window)
@@ -239,7 +246,22 @@ def extract_session_data(transcript_path):
                     text = f"[{mode}] {text}"
                 prompts.append(text)
 
-    return _finalize()
+    result = _finalize()
+
+    # Detect plan-to-build session and recover original prompts from parent
+    parent_id = find_parent_session_id(records, session_id)
+    if parent_id:
+        parent_prompts = extract_parent_prompts(transcript_path, parent_id)
+        if parent_prompts:
+            build_prompts = [
+                p for p in result["prompts"]
+                if not p.startswith("Implement the following plan:")
+                and p != "[Request interrupted by user for tool use]"
+            ]
+            result["prompts"] = parent_prompts + build_prompts
+            result["parent_session"] = parent_id
+
+    return result
 
 
 MODE_LABELS = {
@@ -259,6 +281,8 @@ def format_note(session_id, timestamp, data):
         "",
         f"**Session**: {session_id}",
     ]
+    if data.get("parent_session"):
+        lines.append(f"<!-- continued from session {data['parent_session']} -->")
     if data.get("slug"):
         lines.append(f"**Slug**: {data['slug']}")
     lines.append(f"**Captured**: {timestamp}")
@@ -347,6 +371,50 @@ def extract_text(record):
                     parts.append("[image]")
         return "\n".join(parts).strip()
     return ""
+
+
+def find_parent_session_id(records, current_session_id):
+    """Detect plan-to-build sessions and return the parent session ID."""
+    has_plan = False
+    parent_id = None
+    for rec in records[:10]:
+        if rec.get("planContent"):
+            has_plan = True
+        sid = rec.get("sessionId", "")
+        if sid and sid != current_session_id and parent_id is None:
+            parent_id = sid
+    return parent_id if has_plan else None
+
+
+def extract_parent_prompts(transcript_path, parent_session_id):
+    """Read the parent session transcript and extract user prompts."""
+    parent_path = os.path.join(
+        os.path.dirname(transcript_path), f"{parent_session_id}.jsonl"
+    )
+    if not os.path.isfile(parent_path):
+        return []
+    prompts = []
+    with open(parent_path, "r") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                record = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if record.get("type") != "user":
+                continue
+            if record.get("planContent"):
+                continue
+            text = extract_text(record)
+            if not text or text == "[Request interrupted by user for tool use]":
+                continue
+            mode = extract_mode(record)
+            if mode:
+                text = f"[{mode}] {text}"
+            prompts.append(text)
+    return prompts
 
 
 if __name__ == "__main__":
