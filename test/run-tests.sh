@@ -1560,20 +1560,28 @@ require_e2e() {
 # Usage: claude_commit <filename> <commit-msg> [extra-flags...]
 # Pass --plugin-dir "$PROJECT_DIR" to load the plugin for this session.
 # Returns 0 if commit was created, 1 otherwise. Sets CLAUDE_OUTPUT.
+# Retries once on failure to handle flaky LLM responses.
 claude_commit() {
     local filename="$1"
     local msg="$2"
     shift 2
-    CLAUDE_OUTPUT=$(claude -p \
-        "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push." \
-        --permission-mode acceptEdits \
-        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
-        "$@" \
-        2>&1) || true
+    local attempt
+    for attempt in 1 2; do
+        CLAUDE_OUTPUT=$(claude -p \
+            "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push. Do not ask for permission, just run the commands." \
+            --permission-mode acceptEdits \
+            --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+            "$@" \
+            2>&1) || true
 
-    local log
-    log=$(git log --oneline -5 2>/dev/null || echo "")
-    [[ "$log" == *"$msg"* ]]
+        local log
+        log=$(git log --oneline -5 2>/dev/null || echo "")
+        if [[ "$log" == *"$msg"* ]]; then
+            return 0
+        fi
+        [[ $attempt -eq 1 ]] && echo "  (retry claude_commit after attempt $attempt)" >&2
+    done
+    return 1
 }
 
 test_e2e_plugin_validate() {
