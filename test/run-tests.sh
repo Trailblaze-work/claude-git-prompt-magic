@@ -1410,6 +1410,7 @@ claude_commit() {
     shift 2
     CLAUDE_OUTPUT=$(claude -p \
         "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push." \
+        --permission-mode acceptEdits \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
         "$@" \
         2>&1) || true
@@ -1645,6 +1646,7 @@ test_e2e_plugin_dir_flag() {
     CLAUDE_OUTPUT=$(claude -p \
         "Create a file called plugdir.txt containing 'plugin-dir test' and commit it with message 'Add plugdir.txt'. Do not push." \
         --plugin-dir "$PROJECT_DIR" \
+        --permission-mode acceptEdits \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
         2>&1) || true
 
@@ -1674,6 +1676,7 @@ test_e2e_multiple_commits_distinct_notes() {
     CLAUDE_OUTPUT=$(claude -p \
         "Do these two steps in order: (1) Create file first.txt containing 'first' and commit with message 'Add first.txt'. (2) Create file second.txt containing 'second' and commit with message 'Add second.txt'. Do not push." \
         --plugin-dir "$PROJECT_DIR" \
+        --permission-mode acceptEdits \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
         2>&1) || true
 
