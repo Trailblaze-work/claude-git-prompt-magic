@@ -1379,24 +1379,18 @@ require_e2e() {
     require_claude "$1"
 }
 
-# Helper: set up a test repo with the plugin installed and committed.
-# Caller must call make_test_repo + trap cleanup_test_repo RETURN first.
-setup_e2e_plugin() {
-    install_plugin
-    git add .claude-plugin/ hooks/ .claude/
-    git commit -q -m "add plugin"
-    bash hooks/setup-notes.sh
-}
-
 # Helper: ask Claude to create a file and commit it.
-# Usage: claude_commit <filename> <commit-msg>
+# Usage: claude_commit <filename> <commit-msg> [extra-flags...]
+# Pass --plugin-dir "$PROJECT_DIR" to load the plugin for this session.
 # Returns 0 if commit was created, 1 otherwise. Sets CLAUDE_OUTPUT.
 claude_commit() {
     local filename="$1"
     local msg="$2"
+    shift 2
     CLAUDE_OUTPUT=$(claude -p \
         "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push." \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+        "$@" \
         2>&1) || true
 
     local log
@@ -1428,9 +1422,9 @@ test_e2e_basic_commit() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
-    if claude_commit "hello.txt" "Add hello.txt"; then
+    if claude_commit "hello.txt" "Add hello.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
         note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
@@ -1448,9 +1442,9 @@ test_e2e_note_has_v2_fields() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
-    if claude_commit "fields.txt" "Add fields.txt"; then
+    if claude_commit "fields.txt" "Add fields.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
         note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
         local ok=true
@@ -1471,13 +1465,13 @@ test_e2e_worktree_commit() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
     mkdir -p .claude/worktrees
     git worktree add -q .claude/worktrees/test-task -b worktree-test
     cd .claude/worktrees/test-task
 
-    if claude_commit "wt.txt" "Add wt.txt"; then
+    if claude_commit "wt.txt" "Add wt.txt" --plugin-dir "$PROJECT_DIR"; then
         local note
         note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
         if [[ "$note" == *"Claude Code Prompts"* ]]; then
@@ -1503,10 +1497,10 @@ test_e2e_plugin_disable_stops_capture() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
-    # First commit with plugin enabled — should get a note
-    if ! claude_commit "before-disable.txt" "Add before-disable"; then
+    # First commit with plugin loaded — should get a note
+    if ! claude_commit "before-disable.txt" "Add before-disable" --plugin-dir "$PROJECT_DIR"; then
         fail "E2E: commit before disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
@@ -1517,15 +1511,8 @@ test_e2e_plugin_disable_stops_capture() {
         return
     fi
     pass "E2E: note attached before disable"
-    local note_count_before
-    note_count_before=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
 
-    # Disable plugin by removing from enabledPlugins
-    echo '{}' > .claude/settings.json
-    git add .claude/settings.json
-    git commit -q -m "disable plugin"
-
-    # Second commit with plugin disabled — should NOT get a note
+    # Second commit WITHOUT plugin — should NOT get a note
     if ! claude_commit "after-disable.txt" "Add after-disable"; then
         fail "E2E: commit after disable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
@@ -1543,14 +1530,9 @@ test_e2e_plugin_reenable_resumes_capture() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
-    # Disable
-    echo '{}' > .claude/settings.json
-    git add .claude/settings.json
-    git commit -q -m "disable plugin"
-
-    # Commit while disabled — no note expected
+    # Commit without plugin — no note expected
     if ! claude_commit "while-disabled.txt" "Add while-disabled"; then
         fail "E2E: commit while disabled" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
@@ -1563,13 +1545,8 @@ test_e2e_plugin_reenable_resumes_capture() {
     fi
     pass "E2E: no note while disabled"
 
-    # Re-enable
-    echo '{"enabledPlugins":["."]}' > .claude/settings.json
-    git add .claude/settings.json
-    git commit -q -m "re-enable plugin"
-
-    # Commit after re-enable — note expected
-    if ! claude_commit "after-reenable.txt" "Add after-reenable"; then
+    # Commit with plugin re-enabled — note expected
+    if ! claude_commit "after-reenable.txt" "Add after-reenable" --plugin-dir "$PROJECT_DIR"; then
         fail "E2E: commit after re-enable" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
@@ -1586,14 +1563,8 @@ test_e2e_plugin_uninstall_stops_capture() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
 
-    # Uninstall: remove plugin files and settings reference
-    rm -rf .claude-plugin hooks/hooks.json
-    echo '{}' > .claude/settings.json
-    git add -A
-    git commit -q -m "uninstall plugin"
-
+    # Commit without plugin at all — no note expected
     if ! claude_commit "after-uninstall.txt" "Add after-uninstall"; then
         fail "E2E: commit after uninstall" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
@@ -1614,8 +1585,6 @@ test_e2e_plugin_reinstall_resumes() {
     trap cleanup_test_repo RETURN
 
     # Start with no plugin
-    git commit -q --allow-empty -m "baseline"
-
     if ! claude_commit "no-plugin.txt" "Add no-plugin"; then
         fail "E2E: commit without plugin" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
@@ -1628,13 +1597,10 @@ test_e2e_plugin_reinstall_resumes() {
     fi
     pass "E2E: no note without plugin"
 
-    # Now install the plugin
-    install_plugin
-    git add .claude-plugin/ hooks/ .claude/
-    git commit -q -m "install plugin"
-    bash hooks/setup-notes.sh
+    # Now load the plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
-    if ! claude_commit "with-plugin.txt" "Add with-plugin"; then
+    if ! claude_commit "with-plugin.txt" "Add with-plugin" --plugin-dir "$PROJECT_DIR"; then
         fail "E2E: commit after install" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
         return
     fi
@@ -1681,11 +1647,12 @@ test_e2e_multiple_commits_distinct_notes() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    setup_e2e_plugin
+    bash "$HOOKS_DIR/setup-notes.sh"
 
     # Ask Claude to create two files and make two separate commits
     CLAUDE_OUTPUT=$(claude -p \
         "Do these two steps in order: (1) Create file first.txt containing 'first' and commit with message 'Add first.txt'. (2) Create file second.txt containing 'second' and commit with message 'Add second.txt'. Do not push." \
+        --plugin-dir "$PROJECT_DIR" \
         --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
         2>&1) || true
 
@@ -1715,17 +1682,11 @@ test_e2e_session_start_configures_git() {
 
     make_test_repo
     trap cleanup_test_repo RETURN
-    install_plugin
-    git add .claude-plugin/ hooks/ .claude/
-    git commit -q -m "add plugin"
     git remote add origin "https://example.com/test.git"
 
     # Don't run setup-notes.sh manually — let the SessionStart hook do it
-    # Clear any existing config
-    git config --local --unset notes.displayRef 2>/dev/null || true
-
     # Run a trivial Claude session that triggers SessionStart
-    claude -p "Say hello" --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
+    claude -p "Say hello" --plugin-dir "$PROJECT_DIR" --allowedTools 'Bash(echo *)' 2>&1 >/dev/null || true
 
     local display_ref
     display_ref=$(git config --local --get notes.displayRef 2>/dev/null || echo "")
