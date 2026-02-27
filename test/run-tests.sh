@@ -371,8 +371,13 @@ test_capture_ignores_non_commits() {
     echo '{"tool_input":{"command":"ls -la"},"tool_response":"total 0"}' \
         | bash "$HOOKS_DIR/capture-prompts.sh"
 
-    # Should exit cleanly (the fast guard catches this in <1ms)
-    pass "ignores non-commit commands"
+    local count
+    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$count" -eq 0 ]]; then
+        pass "ignores non-commit commands"
+    else
+        fail "ignores non-commit commands" "found $count notes"
+    fi
 }
 
 test_capture_ignores_failed_commits() {
@@ -667,7 +672,7 @@ assert 'SessionStart' in hooks
 ptu = hooks['PostToolUse']
 assert any('capture-prompts' in json.dumps(e) for e in ptu), 'capture-prompts missing'
 ss = hooks['SessionStart']
-assert any('notes.displayRef' in json.dumps(e) for e in ss), 'SessionStart missing displayRef'
+assert any('setup-notes' in json.dumps(e) for e in ss), 'SessionStart missing setup-notes'
 "; then
         pass "hooks.json is valid"
     else
@@ -1188,7 +1193,13 @@ test_capture_malformed_json() {
     echo 'this is not json but has git commit in it' \
         | bash "$HOOKS_DIR/capture-prompts.sh" || true
 
-    pass "gracefully handles malformed JSON input"
+    local count
+    count=$(git notes --ref=claude-prompts list 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$count" -eq 0 ]]; then
+        pass "gracefully handles malformed JSON input"
+    else
+        fail "gracefully handles malformed JSON input" "found $count notes"
+    fi
 }
 
 test_capture_long_prompt_truncation() {
