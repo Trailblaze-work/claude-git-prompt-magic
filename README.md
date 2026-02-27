@@ -26,6 +26,16 @@ claude plugin disable prompt-trail
 claude plugin enable prompt-trail
 ```
 
+### Update
+
+Plugins are pinned at install time. To update to the latest version:
+
+```bash
+claude plugin install prompt-trail@trailblaze
+```
+
+Check your current version with `claude plugin list`.
+
 ## How it works
 
 A Claude Code [PostToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks) fires after every Bash command. For non-commits it exits in ~1ms. When it detects a successful `git commit`, it rises to the occasion:
