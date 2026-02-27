@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Test suite for claude-git-prompt-magic
+# Test suite for claude-prompt-trail
 # Tests hook functionality, plugin structure, worktree compatibility,
 # multi-commit sessions, parallel sessions, and edge cases.
 # All tests run in isolated /tmp directories — no side effects on the real repo.
@@ -721,7 +721,7 @@ test_plugin_json_valid() {
 import json
 with open('$PROJECT_DIR/.claude-plugin/plugin.json') as f:
     p = json.load(f)
-assert p['name'] == 'prompt-magic', f'name: {p[\"name\"]}'
+assert p['name'] == 'prompt-trail', f'name: {p[\"name\"]}'
 assert 'version' in p
 assert 'description' in p
 "; then
@@ -1891,7 +1891,7 @@ test_e2e_session_start_configures_git() {
 # ============================================================
 
 main() {
-    printf "\033[1mclaude-git-prompt-magic test suite\033[0m\n"
+    printf "\033[1mclaude-prompt-trail test suite\033[0m\n"
 
     section "setup-notes.sh"
     test_setup_notes_configures_displayref

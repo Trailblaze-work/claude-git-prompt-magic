@@ -1,10 +1,10 @@
 {
-  "name": "prompt-magic",
+  "name": "prompt-trail",
   "description": "Captures Claude Code prompts and attaches them to git commits as git notes",
   "version": "1.0.0",
   "author": { "name": "Trailblaze" },
   "homepage": "https://trailblaze.work",
-  "repository": "https://github.com/Trailblaze-work/claude-git-prompt-magic",
+  "repository": "https://github.com/Trailblaze-work/claude-prompt-trail",
   "license": "MIT",
   "keywords": ["git", "prompts", "notes", "audit"]
 }

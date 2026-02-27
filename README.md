@@ -1,4 +1,4 @@
-# claude-git-prompt-magic
+# claude-prompt-trail
 
 Automatically captures Claude Code prompts and attaches them to git commits using [git notes](https://git-scm.com/docs/git-notes). Zero dependencies beyond Python 3 and bash.
 
@@ -9,20 +9,20 @@ The prompts that shape AI-generated code are as important as the code itself. Wh
 ## Install
 
 ```bash
-claude plugin install github:Trailblaze-work/claude-git-prompt-magic
+claude plugin install github:Trailblaze-work/claude-prompt-trail
 ```
 
 To install for your whole team (commits the plugin reference to `.claude/settings.json`):
 
 ```bash
-claude plugin install github:Trailblaze-work/claude-git-prompt-magic --scope project
+claude plugin install github:Trailblaze-work/claude-prompt-trail --scope project
 ```
 
 Toggle the plugin on or off:
 
 ```bash
-claude plugin disable prompt-magic
-claude plugin enable prompt-magic
+claude plugin disable prompt-trail
+claude plugin enable prompt-trail
 ```
 
 ## How it works
@@ -174,7 +174,7 @@ Notes use a structured markdown format designed to be readable in terminals, ren
 ## Uninstall
 
 ```bash
-claude plugin uninstall prompt-magic
+claude plugin uninstall prompt-trail
 ```
 
 To also clean up local git config:
