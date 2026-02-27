@@ -1,0 +1,69 @@
+## Claude Code Prompts
+
+<!-- format:v2 -->
+
+**Session**: 3ab9f3c0-aa41-46de-a60a-60352d6ebaca
+**Slug**: buzzing-imagining-karp
+**Captured**: 2026-02-27T21:42:04Z
+**Branch**: main
+**Model**: claude-opus-4-6
+**Client**: 2.1.62
+**Permission**: accept-edits
+
+### Prompts
+
+**1.** [accept-edits] how can I tell if my claude session/project is running the latest version of the plugin?
+
+**2.** [accept-edits] (base) gilles@mac-1 etincelle % claude plugin list
+Installed plugins:
+
+  ❯ clangd-lsp@claude-plugins-official
+    Version: 1.0.0
+    Scope: user
+    Status: ✔ enabled
+
+  ❯ frontend-design@claude-plugins-official
+    Version: 55b58ec6e564
+    Scope: project
+    Status: ✘ disabled
+
+  ❯ github@claude-plugins-official
+    Version: 55b58ec6e564
+    Scope: user
+    Status: ✘ disabled
+
+  ❯ prompt-trail@trailblaze
+    Version: 1.1.0
+    Scope: user
+    Status: ✔ enabled
+
+  ❯ pyright-lsp@claude-plugins-official
+    Version: 1.0.0
+    Scope: user
+    Status: ✔ enabled
+
+  ❯ swift-lsp@claude-plugins-official
+    Version: 1.0.0
+    Scope: user
+    Status: ✔ enabled
+
+  ❯ typescript-lsp@claude-plugins-official
+    Version: 1.0.0
+    Scope: user
+    Status: ✔ enabled I've published this newer version earlier on github (with you) and it's not picking it up
+
+**3.** [accept-edits] You should mention that in the README
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Turns | 7 user, 7 assistant |
+| Tokens in | 15 |
+| Tokens out | 778 |
+| Cache read | 683,922 |
+| Cache write | 4,127 |
+
+### Tools
+
+Edit(1) Read(1) Bash(1)
