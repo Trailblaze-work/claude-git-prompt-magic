@@ -66,7 +66,9 @@ install_plugin() {
     mkdir -p .claude
     cat > .claude/settings.json <<'JSON'
 {
-  "enabledPlugins": ["."]
+  "enabledPlugins": {
+    ".": true
+  }
 }
 JSON
 }
@@ -670,7 +672,7 @@ test_settings_enables_plugin() {
 import json
 with open('$PROJECT_DIR/.claude/settings.json') as f:
     s = json.load(f)
-assert '.' in s.get('enabledPlugins', []), 'plugin not enabled'
+assert s.get('enabledPlugins', {}).get('.') is True, 'plugin not enabled'
 assert 'hooks' not in s, 'settings.json should not have hooks key'
 "; then
         pass "settings.json enables plugin without inline hooks"
