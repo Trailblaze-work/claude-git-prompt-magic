@@ -60,11 +60,12 @@ def main():
     if "git commit" not in command:
         return
 
-    # Check tool_response for successful commit pattern: [branch hash]
+    # Check tool_response for successful commit pattern:
+    #   [branch hash]  /  [detached HEAD hash]  /  [branch (root-commit) hash]
     response = hook_data.get("tool_response", "")
     if isinstance(response, dict):
         response = json.dumps(response)
-    match = re.search(r"\[[\w/.+-]+ ([a-f0-9]{7,})\]", str(response))
+    match = re.search(r"\[.+? ([a-f0-9]{7,})\]", str(response))
     if not match:
         return
     commit_hash = match.group(1)

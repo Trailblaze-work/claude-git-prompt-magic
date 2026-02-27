@@ -468,6 +468,75 @@ EOF
     fi
 }
 
+test_capture_detached_head() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "content" > file.txt
+    git add file.txt
+    git commit -q -m "detached work"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    # Detach HEAD
+    git checkout -q --detach HEAD
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Fix something in detached HEAD" \
+        "commit:git commit -m detached work"
+
+    # Simulate git's detached HEAD output format
+    local hook_input
+    hook_input=$(cat <<EOF
+{"tool_input":{"command":"git commit -m detached work"},"tool_response":"[detached HEAD ${hash}] detached work\\n 1 file changed","transcript_path":"${transcript}","session_id":"test-session"}
+EOF
+)
+    echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"Fix something in detached HEAD"* ]]; then
+        pass "handles detached HEAD commit format"
+    else
+        fail "handles detached HEAD commit format" "note: $note"
+    fi
+}
+
+test_capture_root_commit() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Create an orphan branch with a root commit
+    git checkout -q --orphan orphan-branch
+    echo "root content" > root.txt
+    git add root.txt
+    git commit -q -m "root commit"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Initialize orphan branch" \
+        "commit:git commit -m root commit"
+
+    # Simulate git's root-commit output format
+    local hook_input
+    hook_input=$(cat <<EOF
+{"tool_input":{"command":"git commit -m root commit"},"tool_response":"[orphan-branch (root-commit) ${hash}] root commit\\n 1 file changed","transcript_path":"${transcript}","session_id":"test-session"}
+EOF
+)
+    echo "$hook_input" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"Initialize orphan branch"* ]]; then
+        pass "handles root-commit format"
+    else
+        fail "handles root-commit format" "note: $note"
+    fi
+}
+
 
 # ============================================================
 # capture-prompts.sh — multi-commit sessions
@@ -1037,6 +1106,69 @@ test_note_includes_tools() {
         pass "note includes tools with counts"
     else
         fail "note includes tools with counts" "note: $note"
+    fi
+}
+
+test_note_includes_permission() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    echo "x" > x.txt && git add x.txt && git commit -q -m "test"
+    local hash
+    hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    TRANSCRIPT_PERMISSION="acceptEdits" \
+    make_transcript "$transcript" \
+        "user:Do something" \
+        "commit:git commit -m test"
+
+    make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == *"**Permission**: accept-edits"* ]]; then
+        pass "note includes permission mode (acceptEdits → accept-edits)"
+    else
+        fail "note includes permission mode" "note: $note"
+    fi
+}
+
+test_note_permission_mode_labels() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Test each MODE_LABELS mapping: raw_mode:expected_label
+    local all_ok=true
+    local pair
+    for pair in "plan:plan" "dontAsk:auto-accept" "bypassPermissions:bypass" "acceptEdits:accept-edits"; do
+        local raw_mode="${pair%%:*}"
+        local label="${pair#*:}"
+
+        echo "$raw_mode" > "file-$raw_mode.txt"
+        git add "file-$raw_mode.txt"
+        git commit -q -m "commit $raw_mode"
+        local hash
+        hash=$(git rev-parse --short HEAD)
+
+        local transcript="$TEST_DIR/transcript-$raw_mode.jsonl"
+        TRANSCRIPT_PERMISSION="$raw_mode" \
+        make_transcript "$transcript" \
+            "user:Test $raw_mode" \
+            "commit:git commit -m commit $raw_mode"
+
+        make_hook_input "$hash" "$transcript" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+        local note
+        note=$(git notes --ref=claude-prompts show HEAD 2>/dev/null || echo "")
+        if [[ "$note" != *"**Permission**: $label"* ]]; then
+            fail "MODE_LABELS: $raw_mode → $label" "note: $note"
+            all_ok=false
+        fi
+    done
+
+    if $all_ok; then
+        pass "all MODE_LABELS correctly transform permission modes"
     fi
 }
 
@@ -1753,6 +1885,8 @@ main() {
     test_capture_ignores_failed_commits
     test_capture_amend_overwrites_note
     test_capture_branch_with_slashes
+    test_capture_detached_head
+    test_capture_root_commit
 
     section "capture-prompts.sh — multi-commit sessions"
     test_multi_commit_session
@@ -1780,6 +1914,8 @@ main() {
     test_note_includes_branch
     test_note_includes_stats
     test_note_includes_tools
+    test_note_includes_permission
+    test_note_permission_mode_labels
     test_multi_model_session
     test_mcp_server_detection
     test_v2_backward_compat

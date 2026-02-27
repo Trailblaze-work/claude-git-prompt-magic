@@ -71,7 +71,7 @@ Notes (claude-prompts):
 
     **2.** Also add a circular crop preview before saving
 
-    **3.** [auto-accept] Looks good, commit and push
+    **3.** Looks good, commit and push
 
     ### Stats
 
@@ -92,7 +92,7 @@ Notes (claude-prompts):
     notion, slack
 ```
 
-View prompts for any specific commit:
+View the raw note for any specific commit:
 
 ```
 $ git notes --ref=claude-prompts show HEAD
@@ -107,6 +107,7 @@ $ git notes --ref=claude-prompts show HEAD
 **Branch**: feature/avatar-upload
 **Model**: claude-opus-4-6
 **Client**: 2.1.59
+**Permission**: accept-edits
 
 ### Prompts
 
@@ -115,6 +116,24 @@ $ git notes --ref=claude-prompts show HEAD
 **2.** Also add a circular crop preview before saving
 
 **3.** Looks good, commit and push
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Turns | 3 user, 8 assistant |
+| Tokens in | 45,230 |
+| Tokens out | 12,847 |
+| Cache read | 128,450 |
+| Cache write | 8,200 |
+
+### Tools
+
+Edit(4) Bash(6) Read(3) Grep(2) Glob(1)
+
+### MCP Servers
+
+notion, slack
 ```
 
 Manual commits have no note and just work normally:
@@ -147,7 +166,7 @@ Notes use a structured markdown format designed to be readable in terminals, ren
 
 **Sections** (all optional, only present when data exists):
 
-- **### Prompts** — numbered user prompts with `[mode]` prefix when non-default
+- **### Prompts** — numbered user prompts with `[mode]` prefix when permission mode changes mid-session
 - **### Stats** — markdown table with turn counts and token usage
 - **### Tools** — compact `ToolName(count)` list sorted by frequency
 - **### MCP Servers** — comma-separated list of MCP server names detected from tool usage
