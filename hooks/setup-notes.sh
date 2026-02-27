@@ -11,15 +11,17 @@ set -euo pipefail
 # Show claude-prompts notes inline in git log
 git config --local notes.displayRef "refs/notes/claude-prompts"
 
-# Fetch notes from remote (idempotent: check before adding)
-FETCH_REF="+refs/notes/claude-prompts:refs/notes/claude-prompts"
-if ! git config --local --get-all remote.origin.fetch 2>/dev/null | grep -qF "$FETCH_REF"; then
-    git config --add --local remote.origin.fetch "$FETCH_REF"
-fi
+# Fetch notes from remote and clean up push refspec (only if origin exists)
+if git remote get-url origin >/dev/null 2>&1; then
+    FETCH_REF="+refs/notes/claude-prompts:refs/notes/claude-prompts"
+    if ! git config --local --get-all remote.origin.fetch 2>/dev/null | grep -qF "$FETCH_REF"; then
+        git config --add --local remote.origin.fetch "$FETCH_REF"
+    fi
 
-# Clean up any leftover push refspec from earlier versions
-if git config --local --get-all remote.origin.push 2>/dev/null | grep -qF "refs/notes/claude-prompts"; then
-    git config --unset-all --local remote.origin.push "refs/notes/claude-prompts" 2>/dev/null || true
+    # Clean up any leftover push refspec from earlier versions
+    if git config --local --get-all remote.origin.push 2>/dev/null | grep -qF "refs/notes/claude-prompts"; then
+        git config --unset-all --local remote.origin.push "refs/notes/claude-prompts" 2>/dev/null || true
+    fi
 fi
 
 exit 0

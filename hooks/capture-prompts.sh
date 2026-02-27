@@ -222,9 +222,9 @@ def extract_session_data(transcript_path):
                 client_version = record.get("version", "")
             if not git_branch:
                 git_branch = record.get("gitBranch", "")
-            # Always update permission_mode to capture the last one
+            # Iterating backward: first value seen = chronologically last
             raw_mode = record.get("permissionMode", "")
-            if raw_mode:
+            if raw_mode and not permission_mode:
                 permission_mode = raw_mode
 
             text = extract_text(record)

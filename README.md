@@ -180,6 +180,7 @@ Set `ANTHROPIC_API_KEY` and install the `claude` CLI to also run E2E tests that 
 ## Limitations
 
 - Only captures prompts from the current session. If you work across multiple sessions before committing, only the committing session's prompts are recorded.
+- Each commit triggers a `git push origin refs/notes/claude-prompts` to sync notes. This adds a few seconds of latency per commit (up to 15s with a slow or unreachable remote). The push fails silently if offline.
 - Requires Python 3 (pre-installed on macOS and most Linux).
 
 ## License

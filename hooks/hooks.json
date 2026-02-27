@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "git config --local notes.displayRef refs/notes/claude-prompts 2>/dev/null; if git remote get-url origin >/dev/null 2>&1; then git config --local --get-all remote.origin.fetch 2>/dev/null | grep -q claude-prompts || git config --add --local remote.origin.fetch '+refs/notes/claude-prompts:refs/notes/claude-prompts'; git config --local --unset-all remote.origin.push '+refs/notes/claude-prompts:refs/notes/claude-prompts' 2>/dev/null || true; fi",
+            "command": "git config --local notes.displayRef refs/notes/claude-prompts 2>/dev/null; if git remote get-url origin >/dev/null 2>&1; then git config --local --get-all remote.origin.fetch 2>/dev/null | grep -q claude-prompts || git config --add --local remote.origin.fetch '+refs/notes/claude-prompts:refs/notes/claude-prompts'; git config --local --unset-all remote.origin.push 'refs/notes/claude-prompts' 2>/dev/null || true; fi",
             "timeout": 5
           }
         ]

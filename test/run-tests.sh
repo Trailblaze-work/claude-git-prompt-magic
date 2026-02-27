@@ -60,7 +60,6 @@ install_plugin() {
     mkdir -p .claude-plugin hooks
     cp "$PROJECT_DIR/.claude-plugin/plugin.json" .claude-plugin/
     cp "$HOOKS_DIR/capture-prompts.sh" hooks/
-    cp "$HOOKS_DIR/setup-notes.sh" hooks/
     cp "$HOOKS_DIR/hooks.json" hooks/
     chmod +x hooks/*.sh
     mkdir -p .claude
@@ -247,6 +246,15 @@ test_setup_notes_no_remote() {
         pass "setup-notes works without a remote"
     else
         fail "setup-notes works without a remote" "got '$display_ref'"
+    fi
+
+    # Should NOT create orphaned remote.origin.fetch when no remote exists
+    local fetch_ref
+    fetch_ref=$(git config --local --get-all remote.origin.fetch 2>/dev/null || echo "")
+    if [[ -z "$fetch_ref" ]]; then
+        pass "setup-notes does not create orphaned fetch refspec"
+    else
+        fail "setup-notes does not create orphaned fetch refspec" "got '$fetch_ref'"
     fi
 }
 
