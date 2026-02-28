@@ -234,6 +234,91 @@ test_setup_notes_cleans_push_refspec() {
     fi
 }
 
+test_setup_notes_configures_rewrite_ref() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    bash "$HOOKS_DIR/setup-notes.sh"
+
+    local rewrite_ref
+    rewrite_ref=$(git config --local --get notes.rewriteRef 2>/dev/null || echo "")
+    if [[ "$rewrite_ref" == "refs/notes/claude-prompt-trail" ]]; then
+        pass "setup-notes sets notes.rewriteRef"
+    else
+        fail "setup-notes sets notes.rewriteRef" "got '$rewrite_ref'"
+    fi
+}
+
+test_setup_notes_configures_rewrite_mode() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    bash "$HOOKS_DIR/setup-notes.sh"
+
+    local rewrite_mode
+    rewrite_mode=$(git config --local --get notes.rewriteMode 2>/dev/null || echo "")
+    if [[ "$rewrite_mode" == "overwrite" ]]; then
+        pass "setup-notes sets notes.rewriteMode to overwrite"
+    else
+        fail "setup-notes sets notes.rewriteMode to overwrite" "got '$rewrite_mode'"
+    fi
+}
+
+test_notes_survive_rebase() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    bash "$HOOKS_DIR/setup-notes.sh"
+
+    # Create base commit, then a feature commit with a note
+    echo "base" > base.txt
+    git add base.txt
+    git commit -q -m "base"
+
+    echo "feature" > feature.txt
+    git add feature.txt
+    git commit -q -m "feature"
+
+    git notes --ref=claude-prompt-trail add -m "test note for rebase"
+
+    # Rebase onto the root (rewrites SHAs)
+    git rebase -q --onto HEAD~2 HEAD~1 HEAD
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == "test note for rebase" ]]; then
+        pass "notes survive rebase"
+    else
+        fail "notes survive rebase" "got '$note'"
+    fi
+}
+
+test_notes_survive_amend() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    bash "$HOOKS_DIR/setup-notes.sh"
+
+    echo "original" > file.txt
+    git add file.txt
+    git commit -q -m "original commit"
+
+    git notes --ref=claude-prompt-trail add -m "test note for amend"
+
+    # Amend the commit (changes SHA)
+    echo "amended" >> file.txt
+    git add file.txt
+    git commit -q --amend -m "amended commit"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    if [[ "$note" == "test note for amend" ]]; then
+        pass "notes survive amend"
+    else
+        fail "notes survive amend" "got '$note'"
+    fi
+}
+
 test_setup_notes_no_remote() {
     make_test_repo
     trap cleanup_test_repo RETURN
@@ -1669,6 +1754,134 @@ test_redact_preserves_normal_text() {
 
 
 # ============================================================
+# Squash merge note preservation
+# ============================================================
+
+# Build PostToolUse hook JSON for a squash merge command.
+# Usage: make_squash_merge_hook_input <branch>
+make_squash_merge_hook_input() {
+    local branch="$1"
+    cat <<EOF
+{"tool_input":{"command":"git merge --squash ${branch}"},"tool_response":"Squash commit -- not updating HEAD\\nAutomatic merge went well; stopped before committing as requested."}
+EOF
+}
+
+test_squash_merge_copies_notes() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Create a feature branch with 2 commits, each with a note
+    git checkout -q -b feature
+    echo "a" > a.txt
+    git add a.txt
+    git commit -q -m "feature commit 1"
+    local hash1
+    hash1=$(git rev-parse HEAD)
+    git notes --ref=claude-prompt-trail add -m "## Claude Code Prompts
+
+**Session**: sess-1
+
+### Prompts
+
+**1.** Add file a" "$hash1"
+
+    echo "b" > b.txt
+    git add b.txt
+    git commit -q -m "feature commit 2"
+    local hash2
+    hash2=$(git rev-parse HEAD)
+    git notes --ref=claude-prompt-trail add -m "## Claude Code Prompts
+
+**Session**: sess-2
+
+### Prompts
+
+**1.** Add file b" "$hash2"
+
+    # Switch back to main, squash merge
+    git checkout -q main
+    git merge --squash feature
+
+    # Phase 1: fire the hook for the squash merge command
+    make_squash_merge_hook_input "feature" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    # Phase 2: commit the squash merge
+    git commit -q -m "squash merge feature"
+    local squash_hash
+    squash_hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Squash merge the feature branch" \
+        "commit:git commit -m squash merge feature"
+
+    make_hook_input "$squash_hash" "$transcript" "squash-session" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # Should have the normal commit note
+    [[ "$note" == *"Claude Code Prompts"* ]] || ok=false
+    [[ "$note" == *"Squash merge the feature branch"* ]] || ok=false
+    # Should have the squashed commit prompts section
+    [[ "$note" == *"### Squashed Commit Prompts"* ]] || ok=false
+    # Should contain notes from both source commits
+    [[ "$note" == *"Add file a"* ]] || ok=false
+    [[ "$note" == *"Add file b"* ]] || ok=false
+
+    if $ok; then
+        pass "squash merge copies notes from source commits"
+    else
+        fail "squash merge copies notes from source commits" "note: $note"
+    fi
+}
+
+test_squash_merge_no_notes_no_section() {
+    make_test_repo
+    trap cleanup_test_repo RETURN
+
+    # Create a feature branch with commits but NO notes
+    git checkout -q -b feature-no-notes
+    echo "c" > c.txt
+    git add c.txt
+    git commit -q -m "feature commit without notes"
+
+    # Switch back to main, squash merge
+    git checkout -q main
+    git merge --squash feature-no-notes
+
+    # Phase 1: fire the hook for the squash merge command
+    make_squash_merge_hook_input "feature-no-notes" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    # Phase 2: commit the squash merge
+    git commit -q -m "squash merge no-notes"
+    local squash_hash
+    squash_hash=$(git rev-parse --short HEAD)
+
+    local transcript="$TEST_DIR/transcript.jsonl"
+    make_transcript "$transcript" \
+        "user:Squash merge the feature branch" \
+        "commit:git commit -m squash merge no-notes"
+
+    make_hook_input "$squash_hash" "$transcript" "squash-session-2" | bash "$HOOKS_DIR/capture-prompts.sh"
+
+    local note
+    note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
+    local ok=true
+    # Should have the normal commit note
+    [[ "$note" == *"Claude Code Prompts"* ]] || ok=false
+    # Should NOT have the squashed section
+    [[ "$note" != *"Squashed Commit Prompts"* ]] || ok=false
+
+    if $ok; then
+        pass "squash merge without notes has no Squashed section"
+    else
+        fail "squash merge without notes has no Squashed section" "note: $note"
+    fi
+}
+
+
+# ============================================================
 # E2E tests (optional, require ANTHROPIC_API_KEY + claude CLI)
 # ============================================================
 
@@ -2040,9 +2253,13 @@ main() {
     section "setup-notes.sh"
     test_setup_notes_configures_displayref
     test_setup_notes_configures_fetch_refspec
+    test_setup_notes_configures_rewrite_ref
+    test_setup_notes_configures_rewrite_mode
     test_setup_notes_idempotent
     test_setup_notes_cleans_push_refspec
     test_setup_notes_no_remote
+    test_notes_survive_rebase
+    test_notes_survive_amend
 
     section "capture-prompts.sh — basics"
     test_capture_attaches_note
@@ -2105,6 +2322,10 @@ main() {
     test_redact_aws_key
     test_redact_generic_secret_assignment
     test_redact_preserves_normal_text
+
+    section "squash merge note preservation"
+    test_squash_merge_copies_notes
+    test_squash_merge_no_notes_no_section
 
     section "E2E with Claude (optional)"
     test_e2e_plugin_validate

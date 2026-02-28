@@ -192,7 +192,10 @@ To also clean up local git config:
 
 ```bash
 git config --local --unset notes.displayRef
+git config --local --unset notes.rewriteRef
+git config --local --unset notes.rewriteMode
 git config --local --unset-all remote.origin.fetch "+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail"
+rm -f "$(git rev-parse --git-dir)/claude-prompt-trail-squash-notes"
 ```
 
 ## Worktree support
@@ -209,6 +212,7 @@ Set `ANTHROPIC_API_KEY` and install the `claude` CLI to also run E2E tests that 
 
 ## Limitations
 
+- Notes survive `git rebase`, `git commit --amend`, and interactive rebase (squash/fixup) automatically. `git merge --squash` preserves notes inside Claude Code sessions (the hook copies them from the squashed commits), but not from plain terminal or GitHub UI merges — git fires no rewrite hook for squash merges.
 - Only captures prompts from the current session. If you work across multiple sessions before committing, only the committing session's prompts are recorded.
 - Each commit triggers a `git push origin refs/notes/claude-prompt-trail` to sync notes. This adds a few seconds of latency per commit (up to 15s with a slow or unreachable remote). The push fails silently if offline.
 - Requires Python 3 (pre-installed on macOS and most Linux).

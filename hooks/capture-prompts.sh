@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Fast guard: skip if stdin doesn't mention "git commit" at all (~1ms exit)
 INPUT=$(cat)
-if [[ "$INPUT" != *"git commit"* ]]; then
+if [[ "$INPUT" != *"git commit"* && "$INPUT" != *"git merge"* ]]; then
     exit 0
 fi
 
@@ -54,9 +54,15 @@ def main():
     except (json.JSONDecodeError, KeyError):
         return
 
-    # Validate this is a Bash command containing "git commit"
     tool_input = hook_data.get("tool_input", {})
     command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+
+    # Phase 1: squash merge detected — save notes from source commits
+    if "git merge" in command and "--squash" in command:
+        handle_squash_merge()
+        return
+
+    # Phase 2: normal commit flow
     if "git commit" not in command:
         return
 
@@ -96,6 +102,9 @@ def main():
     if result.returncode != 0:
         return
 
+    # Append squashed commit notes if present (Phase 2 of squash merge flow)
+    append_squash_notes(commit_hash)
+
     # Push the note to remote (best-effort, only if origin exists)
     if subprocess.run(
         ["git", "remote", "get-url", "origin"],
@@ -106,6 +115,72 @@ def main():
             capture_output=True,
             timeout=15,
         )
+
+
+def handle_squash_merge():
+    """Phase 1: save notes from squashed source commits to a temp file."""
+    try:
+        git_dir = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except Exception:
+        return
+    squash_msg_path = os.path.join(git_dir, "SQUASH_MSG")
+    if not os.path.isfile(squash_msg_path):
+        return
+    with open(squash_msg_path, "r") as f:
+        content = f.read()
+    shas = re.findall(r"^commit ([a-f0-9]{40})", content, re.MULTILINE)
+    if not shas:
+        return
+    collected = []
+    for sha in shas:
+        result = subprocess.run(
+            ["git", "notes", "--ref=claude-prompt-trail", "show", sha],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            collected.append(result.stdout.strip())
+    if not collected:
+        return
+    temp_path = os.path.join(git_dir, "claude-prompt-trail-squash-notes")
+    with open(temp_path, "w") as f:
+        f.write("\n\n---\n\n".join(collected))
+
+
+def append_squash_notes(commit_hash):
+    """Phase 2: append saved squash notes to the commit's note."""
+    try:
+        git_dir = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except Exception:
+        return
+    temp_path = os.path.join(git_dir, "claude-prompt-trail-squash-notes")
+    if not os.path.isfile(temp_path):
+        return
+    with open(temp_path, "r") as f:
+        squash_notes = f.read().strip()
+    if not squash_notes:
+        os.remove(temp_path)
+        return
+    # Read current note
+    result = subprocess.run(
+        ["git", "notes", "--ref=claude-prompt-trail", "show", commit_hash],
+        capture_output=True, text=True, timeout=5,
+    )
+    if result.returncode != 0:
+        os.remove(temp_path)
+        return
+    current_note = result.stdout.rstrip()
+    combined = current_note + "\n\n---\n\n### Squashed Commit Prompts\n\n" + squash_notes
+    subprocess.run(
+        ["git", "notes", "--ref=claude-prompt-trail", "add", "-f", "-m", combined, commit_hash],
+        capture_output=True, timeout=10,
+    )
+    os.remove(temp_path)
 
 
 def extract_session_data(transcript_path, session_id):

@@ -11,6 +11,10 @@ set -euo pipefail
 # Show claude-prompt-trail notes inline in git log
 git config --local notes.displayRef "refs/notes/claude-prompt-trail"
 
+# Preserve notes across rebase and amend (rewrite refs to new SHAs)
+git config --local notes.rewriteRef "refs/notes/claude-prompt-trail"
+git config --local notes.rewriteMode overwrite
+
 # Fetch notes from remote and clean up push refspec (only if origin exists)
 if git remote get-url origin >/dev/null 2>&1; then
     FETCH_REF="+refs/notes/claude-prompt-trail:refs/notes/claude-prompt-trail"
