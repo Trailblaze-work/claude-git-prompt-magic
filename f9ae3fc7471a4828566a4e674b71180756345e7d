@@ -1,0 +1,112 @@
+## Claude Code Prompts
+
+<!-- format:v2 -->
+
+**Session**: ae689fa6-c13d-4cd9-b302-660a8096ded9
+**Slug**: buzzing-imagining-karp
+**Captured**: 2026-02-28T14:35:25Z
+**Branch**: main
+**Model**: claude-opus-4-6
+**Client**: 2.1.62
+**Permission**: accept-edits
+
+### Prompts
+
+**1.** [Request interrupted by user for tool use]
+
+**2.** Implement the following plan:
+
+# Preserve git notes across `git merge --squash`
+
+## Context
+
+`git merge --squash` doesn't fire git's post-rewrite hook, so `notes.rewriteRef` can't help. But when Claude Code runs the commands, our PostToolUse hook fires for both `git merge --squash` and the subsequent `git commit`. We can use this two-phase window to copy notes from the squashed source commits to the new squash merge commit.
+
+This only works inside Claude Code sessions (where hooks fire). Plain terminal, GitHub UI, etc. won't trigger it.
+
+## Approach: two-phase hook
+
+**Phase 1 — `git merge --squash` detected:**
+1. Read `.git/SQUASH_MSG` (git creates it after squash merge, contains full SHAs of squashed commits)
+2. For each SHA, read its `refs/notes/claude-prompt-trail` note (if any)
+3. Save found notes to `.git/claude-prompt-trail-squash-notes` temp file
+
+**Phase 2 — `git commit` (existing flow):**
+1. Normal prompt capture runs as before
+2. After attaching the prompt note, check for the temp file
+3. If found, read saved notes, append them under a `### Squashed Commit Prompts` section
+4. Re-attach the combined note with `-f`
+5. Delete the temp file
+
+## Changes
+
+### 1. `hooks/capture-prompts.sh` — fast guard + Python logic
+
+**Bash fast guard** (line 11): also pass through `git merge` commands:
+```bash
+if [[ "$INPUT" != *"git commit"* && "$INPUT" != *"git merge"* ]]; then
+    exit 0
+fi
+```
+
+**Python `main()`**: add a branch for squash merge detection before the existing commit logic:
+- If command contains `git merge` and `--squash`: run `handle_squash_merge()` and return
+- If command contains `git commit`: existing flow + squash note appending at the end
+
+**New function `handle_squash_merge()`**:
+- `git rev-parse --git-dir` → find `.git/SQUASH_MSG`
+- Parse SHAs with `re.findall(r"^commit ([a-f0-9]{40})", content, re.MULTILINE)`
+- For each SHA, `git notes --ref=claude-prompt-trail show <sha>`
+- Write concatenated notes (joined by `\n\n---\n\n`) to `<git-dir>/claude-prompt-trail-squash-notes`
+- Exit silently if no notes found
+
+**Append squash notes in commit handler** (after line 97):
+- Check for `<git-dir>/claude-prompt-trail-squash-notes`
+- If exists, read current note, append `\n\n---\n\n### Squashed Commit Prompts\n\n` + saved notes
+- Re-attach with `git notes add -f -m`
+- Delete temp file
+
+### 2. `test/run-tests.sh` — add tests
+
+- `test_squash_merge_copies_notes`: full flow — create feature branch with 2 noted commits, squash merge, verify both notes appear on the squash commit
+- `test_squash_merge_no_notes_no_section`: squash merge where source commits have no notes, verify no "Squashed" section appears
+- Register both under a new `section "squash merge note preservation"`
+
+### 3. `README.md` — update limitations
+
+Replace the current `git merge --squash` limitation line to note that it works inside Claude Code sessions but not outside (plain terminal, GitHub, etc.).
+
+### 4. `README.md` — update uninstall section
+
+Add cleanup of `claude-prompt-trail-squash-notes` temp file (if it exists).
+
+## Files to modify
+
+- `hooks/capture-prompts.sh` (fast guard + Python: ~40 lines)
+- `test/run-tests.sh` (~60 lines)
+- `README.md` (1-2 lines)
+
+## Verification
+
+1. `bash test/run-tests.sh` — all tests pass
+2. Existing tests still pass (no regressions in commit/amend/rebase flows)
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gilles/.[REDACTED_LONG_SECRET].jsonl
+
+**3.** [accept-edits] with all these rebase and squash workaround, do we retain all the prompt trails after these operations?
+
+**4.** [accept-edits] commit and push. thank @allixsenos in the commit description since he reported those shortcomings that are being addressed here
+
+### Stats
+
+| Metric | Value |
+|--------|-------|
+| Turns | 42 user, 60 assistant |
+| Tokens in | 9,171 |
+| Tokens out | 8,338 |
+| Cache read | 3,770,967 |
+| Cache write | 116,984 |
+
+### Tools
+
+Read(10) TaskUpdate(8) Edit(8) Bash(6) TaskCreate(4) Grep(2)
