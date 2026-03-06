@@ -1,0 +1,25 @@
+{
+  "session_id": "1473b884-cf3c-4194-9bca-5ef5196f23a2",
+  "slug": "ethereal-floating-avalanche",
+  "started": "2026-02-27T17:54:24.349Z",
+  "last_updated": "2026-02-27T19:36:30.871Z",
+  "models": [
+    "claude-opus-4-6"
+  ],
+  "client_version": "2.1.62",
+  "git_branch": "main",
+  "user_turns": 28,
+  "assistant_turns": 32,
+  "commits": [],
+  "tools_used": {
+    "Bash": 7,
+    "Grep": 6,
+    "Read": 2,
+    "Edit": 1,
+    "EnterPlanMode": 1,
+    "Task": 1,
+    "Write": 1,
+    "ExitPlanMode": 1
+  },
+  "compressed_size": 46176
+}
