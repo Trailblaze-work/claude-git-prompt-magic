@@ -1,0 +1,27 @@
+{
+  "session_id": "ae689fa6-c13d-4cd9-b302-660a8096ded9",
+  "slug": "buzzing-imagining-karp",
+  "started": "2026-02-28T14:30:24.598Z",
+  "last_updated": "2026-02-28T15:18:55.341Z",
+  "models": [
+    "claude-opus-4-6"
+  ],
+  "client_version": "2.1.62",
+  "git_branch": "main",
+  "user_turns": 65,
+  "assistant_turns": 100,
+  "commits": [],
+  "tools_used": {
+    "Read": 11,
+    "TaskCreate": 4,
+    "TaskUpdate": 8,
+    "Edit": 14,
+    "Bash": 8,
+    "Grep": 2,
+    "Task": 5,
+    "Write": 2,
+    "ExitPlanMode": 3,
+    "AskUserQuestion": 3
+  },
+  "compressed_size": 383380
+}
