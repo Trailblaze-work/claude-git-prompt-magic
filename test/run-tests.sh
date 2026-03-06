@@ -1919,7 +1919,7 @@ claude_commit() {
         CLAUDE_OUTPUT=$(claude -p \
             "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push. Do not ask for permission, just run the commands." \
             --permission-mode acceptEdits \
-            --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+            --allowedTools 'Bash(git:*)' 'Bash(echo:*)' 'Write' \
             "$@" \
             2>&1) || true
 
