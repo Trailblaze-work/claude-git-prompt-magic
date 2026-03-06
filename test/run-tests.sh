@@ -1917,9 +1917,8 @@ claude_commit() {
     local attempt
     for attempt in 1 2; do
         CLAUDE_OUTPUT=$(claude -p \
-            "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push. Do not ask for permission, just run the commands." \
-            --permission-mode acceptEdits \
-            --allowedTools 'Bash(git:*)' 'Bash(echo:*)' 'Write' \
+            "Create a file called ${filename} containing 'test content' and commit it with message '${msg}'. Do not push." \
+            --dangerously-skip-permissions \
             "$@" \
             2>&1) || true
 
@@ -1966,32 +1965,19 @@ test_e2e_basic_commit() {
             pass "E2E: commit with note attached"
         else
             fail "E2E: commit with note attached" "commit exists but no note"
+            return
         fi
-    else
-        fail "E2E: Claude created commit" "no matching commit. Output: ${CLAUDE_OUTPUT:0:200}"
-    fi
-}
-
-test_e2e_note_has_v2_fields() {
-    require_e2e "E2E note v2 fields" || return 0
-
-    make_test_repo
-    trap cleanup_test_repo RETURN
-    bash "$HOOKS_DIR/setup-notes.sh"
-
-    if claude_commit "fields.txt" "Add fields.txt" --plugin-dir "$PROJECT_DIR"; then
-        local note
-        note=$(git notes --ref=claude-prompt-trail show HEAD 2>/dev/null || echo "")
-        local ok=true
-        [[ "$note" == *"format:v2"* ]] || { fail "E2E: note has v2 marker" "missing format:v2"; ok=false; }
-        [[ "$note" == *"**Session**:"* ]] || { fail "E2E: note has Session field" "missing Session"; ok=false; }
-        [[ "$note" == *"**Captured**:"* ]] || { fail "E2E: note has Captured field" "missing Captured"; ok=false; }
-        [[ "$note" == *"### Prompts"* ]] || { fail "E2E: note has Prompts section" "missing Prompts"; ok=false; }
-        if $ok; then
+        # Check v2 format fields in the same note (avoids a second Claude invocation)
+        local v2_ok=true
+        [[ "$note" == *"format:v2"* ]] || { fail "E2E: note has v2 marker" "missing format:v2"; v2_ok=false; }
+        [[ "$note" == *"**Session**:"* ]] || { fail "E2E: note has Session field" "missing Session"; v2_ok=false; }
+        [[ "$note" == *"**Captured**:"* ]] || { fail "E2E: note has Captured field" "missing Captured"; v2_ok=false; }
+        [[ "$note" == *"### Prompts"* ]] || { fail "E2E: note has Prompts section" "missing Prompts"; v2_ok=false; }
+        if $v2_ok; then
             pass "E2E: note has v2 format fields"
         fi
     else
-        fail "E2E: Claude created commit for v2 check" "no commit. Output: ${CLAUDE_OUTPUT:0:200}"
+        fail "E2E: Claude created commit" "no matching commit. Output: ${CLAUDE_OUTPUT:0:200}"
     fi
 }
 
@@ -2330,7 +2316,6 @@ main() {
     section "E2E with Claude (optional)"
     test_e2e_plugin_validate
     test_e2e_basic_commit
-    test_e2e_note_has_v2_fields
     test_e2e_worktree_commit
     test_e2e_no_plugin_dir_skips_capture
     test_e2e_plugin_dir_resumes_capture
