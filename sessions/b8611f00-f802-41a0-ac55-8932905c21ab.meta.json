@@ -1,0 +1,21 @@
+{
+  "session_id": "b8611f00-f802-41a0-ac55-8932905c21ab",
+  "slug": "jolly-petting-lobster",
+  "started": "2026-03-06T13:00:40.142Z",
+  "last_updated": "2026-03-06T13:02:09.578Z",
+  "models": [
+    "claude-opus-4-6"
+  ],
+  "client_version": "2.1.70",
+  "git_branch": "main",
+  "user_turns": 11,
+  "assistant_turns": 17,
+  "commits": [],
+  "tools_used": {
+    "ToolSearch": 2,
+    "Bash": 5,
+    "Grep": 2,
+    "Read": 1
+  },
+  "compressed_size": 12710
+}
