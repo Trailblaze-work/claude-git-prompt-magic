@@ -2146,7 +2146,7 @@ test_e2e_plugin_dir_flag() {
         "Create a file called plugdir.txt containing 'plugin-dir test' and commit it with message 'Add plugdir.txt'. Do not push." \
         --plugin-dir "$PROJECT_DIR" \
         --permission-mode acceptEdits \
-        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+        --allowedTools 'Bash(git:*)' 'Bash(echo:*)' 'Write' \
         2>&1) || true
 
     local log
@@ -2176,7 +2176,7 @@ test_e2e_multiple_commits_distinct_notes() {
         "Do these two steps in order: (1) Create file first.txt containing 'first' and commit with message 'Add first.txt'. (2) Create file second.txt containing 'second' and commit with message 'Add second.txt'. Do not push." \
         --plugin-dir "$PROJECT_DIR" \
         --permission-mode acceptEdits \
-        --allowedTools 'Bash(git *)' 'Bash(echo *)' 'Write' \
+        --allowedTools 'Bash(git:*)' 'Bash(echo:*)' 'Write' \
         2>&1) || true
 
     local log
