@@ -1,0 +1,24 @@
+{
+  "session_id": "c021309e-d0de-4535-b89d-c8f38f1ac253",
+  "slug": "composed-gliding-book",
+  "started": "2026-03-07T09:35:45.025Z",
+  "last_updated": "2026-03-07T09:44:22.754Z",
+  "models": [
+    "claude-opus-4-6"
+  ],
+  "client_version": "2.1.71",
+  "git_branch": "main",
+  "user_turns": 17,
+  "assistant_turns": 32,
+  "commits": [],
+  "tools_used": {
+    "ToolSearch": 3,
+    "Bash": 7,
+    "Glob": 1,
+    "Read": 3,
+    "Agent": 1,
+    "Write": 1,
+    "ExitPlanMode": 1
+  },
+  "compressed_size": 33334
+}
